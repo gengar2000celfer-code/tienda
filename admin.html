@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tienda · Inicio por rol</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><i aria-hidden="true">🛒</i> Tienda</div>
+  <div class="who">
+    <span class="rol admin">Administrador</span>
+    <span>admin@tienda.com</span>
+    <button id="salir">Cerrar sesión</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="greeting">
+    <h1>Buenos días, admin</h1>
+    <p id="fechaActual">Cargando fecha...</p>
+  </div>
+
+  <div class="dash-grid">
+    <button class="card c-yellow" id="goPOS">
+      <i aria-hidden="true">🧾</i>
+      <h3>Nueva venta</h3>
+      <p>Abrir la caja y cobrar</p>
+    </button>
+    <button class="card c-blue" id="goProd">
+      <i aria-hidden="true">📦</i>
+      <h3>Productos</h3>
+      <p>Agregar, editar y dar de baja</p>
+    </button>
+    <button class="card c-orange" id="goRep">
+      <i aria-hidden="true">📈</i>
+      <h3>Reportes</h3>
+      <p>Ventas por día, producto y cobrador</p>
+    </button>
+    <button class="card c-green" id="goUsers">
+      <i aria-hidden="true">👥</i>
+      <h3>Usuarios</h3>
+      <p>Crear y desactivar cobradores</p>
+    </button>
+    <button class="card c-purple" id="goCorte">
+      <i aria-hidden="true">💵</i>
+      <h3>Corte general</h3>
+      <p>Cierre del día de toda la tienda</p>
+    </button>
+    <button class="card c-gray" id="goAv">
+      <i aria-hidden="true">📢</i>
+      <h3>Avisos y Alertas <span id="badgeAv" class="badge" hidden>0</span></h3>
+      <p>Mensajes a caja y reportes de empleados</p>
+    </button>
+  </div>
+
+  <section class="summary">
+    <h4 class="sum-title">RESUMEN DE HOY</h4>
+    <div class="sum-grid">
+      <div class="stat"><span>Tickets</span><strong id="sumTk">0</strong></div>
+      <div class="stat"><span>Productos<br>vendidos</span><strong id="sumProd">0</strong></div>
+      <div class="stat"><span>Cobradores<br>activos</span><strong id="sumCob">0</strong></div>
+      <div class="stat"><span>IVA<br>cobrado</span><strong id="sumIva">$0.00</strong></div>
+      <div class="stat big"><span>Ventas</span><strong id="sumTot">$0.00</strong></div>
+    </div>
+    <p class="sum-foot">Se llenará con ventas reales</p>
+  </section>
+</main>
+
+<!-- Modales del Administrador -->
+
+<!-- Modal: Productos e Inventario -->
+<dialog id="dProd" class="d-large">
+  <div class="d-head">
+    <h3>Catálogo e Inventario</h3>
+    <div class="d-tabs"><button class="active" data-tab="cat">Catálogo</button><button data-tab="resurtir">Por resurtir <span id="badgeResurtir" class="badge"></span></button><button data-tab="kardex">Kardex</button></div>
+  </div>
+  
+  <!-- Pestaña: Catálogo -->
+  <div id="tab-cat" class="tab-content active">
+    <div class="toolbar">
+      <input type="text" id="busqProd" placeholder="Buscar producto..." class="flex-1">
+      <button class="go" id="bNuevoProd">+ Nuevo producto</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>SKU/Código</th><th>Nombre</th><th>Stock</th><th>Precio</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="listaProd"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pestaña: Kardex (Movimientos) -->
+  <div id="tab-kardex" class="tab-content" hidden>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cant.</th><th>Stock Final</th><th>Motivo / Usuario</th></tr></thead>
+        <tbody id="listaKardex"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+</dialog>
+
+<!-- Modal: Formulario de Producto -->
+<dialog id="dFormProd">
+  <h3 id="fpTitle">Nuevo Producto</h3>
+  <form id="formProd" class="form-grid">
+    <label>Código de barras <input id="fpCode" required></label>
+    <label>SKU (Opcional) <input id="fpSku"></label>
+    <label class="col-2">Nombre <input id="fpName" required></label>
+    <label>Departamento 
+      <select id="fpDep"><option>Abarrotes</option><option>Bebidas</option><option>Limpieza</option></select>
+    </label>
+    <label>Unidad <select id="fpUnit"><option value="pza">Pieza</option><option value="kg">Kilogramo</option></select></label>
+    <label>Precio Venta ($) <input type="number" step="0.01" id="fpPrice" required></label>
+    <label>IVA (%) <select id="fpIva"><option value="0">0%</option><option value="0.16">16%</option></select></label>
+    
+    <div class="private-zone col-2">
+      <h4>Datos Privados (Solo dueño)</h4>
+      <div class="form-grid">
+        <label>Costo ($) <input type="number" step="0.01" id="fpCost" required></label>
+        <label>Proveedor <input id="fpProv"></label>
+      </div>
+    </div>
+    
+    <label>Stock actual <input type="number" step="0.001" id="fpStock" disabled placeholder="Usa ajustes para cambiar"></label>
+    <label>Stock mínimo <input type="number" step="0.001" id="fpMin" required></label>
+    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
+  </form>
+</dialog>
+
+<!-- Modal: Ajuste de Inventario -->
+<dialog id="dAjuste">
+  <h3>Ajustar Inventario</h3>
+  <p class="meta" id="ajName">Producto seleccionado</p>
+  <form id="formAjuste" class="form-grid">
+    <label class="col-2">Tipo de movimiento
+      <select id="ajTipo">
+        <option value="compra">Entrada por Compra (Proveedor)</option>
+        <option value="merma">Salida por Merma / Daño</option>
+        <option value="conteo">Ajuste por Conteo Físico</option>
+      </select>
+    </label>
+    <label>Cantidad a afectar <input type="number" step="0.001" id="ajCant" required></label>
+    <label class="col-2">Motivo / Notas <input id="ajMotivo" placeholder="Ej. Factura #123, Producto caducado..." required></label>
+    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Registrar Movimiento</button></div>
+  </form>
+</dialog>
+
+<!-- Modal: Usuarios -->
+<dialog id="dUsers" class="d-large">
+  <div class="d-head">
+    <h3>Gestión de Usuarios</h3>
+    <button class="go" id="bNuevoUser">+ Nuevo Usuario</button>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody id="listaUsers"></tbody>
+    </table>
+  </div>
+  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+</dialog>
+
+<!-- Modal: Formulario de Usuario -->
+<dialog id="dFormUser">
+  <h3 id="fuTitle">Nuevo Usuario</h3>
+  <form id="formUser" class="form-grid">
+    <label class="col-2">Nombre completo <input id="fuName" required></label>
+    <label class="col-2">Correo <input type="email" id="fuEmail" required></label>
+    <label>Contraseña <input type="password" id="fuPass" placeholder="Dejar en blanco para no cambiar"></label>
+    <label>Rol <select id="fuRol"><option value="cobrador">Cobrador</option><option value="admin">Administrador</option></select></label>
+    <label class="col-2"><input type="checkbox" id="fuActivo" checked> Usuario Activo (Puede iniciar sesión)</label>
+    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
+  </form>
+</dialog>
+
+<!-- Modal: Avisos y Reportes -->
+<dialog id="dAvList" class="d-large">
+  <div class="d-head">
+    <h3>Centro de Mensajes</h3>
+    <div class="d-tabs"><button class="active" data-tab="enviar">Enviar Aviso</button><button data-tab="recibidos">Reportes de Cajeros</button></div>
+  </div>
+  <div id="tab-enviar" class="tab-content active">
+    <form id="formAviso" style="display:flex; flex-direction:column; gap:10px; margin-bottom: 20px;">
+      <label>Mensaje para las cajas <input id="avTxt" required placeholder="Ej. Promoción 2x1 activada hoy"></label>
+      <label><input type="checkbox" id="avImp"> Marcar como urgente (Rojo)</label>
+      <button type="submit" class="go" style="width:fit-content">Transmitir Aviso</button>
+    </form>
+    <h4>Avisos Activos</h4>
+    <div id="listaAvisos" class="avl"></div>
+  </div>
+  <div id="tab-recibidos" class="tab-content" hidden>
+    <div id="listaReportesCaja" class="avl"></div>
+  </div>
+  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+</dialog>
+
+<script src="js/admin.js"></script>
+</body>
+    </html>
+      
