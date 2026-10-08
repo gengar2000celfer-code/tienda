@@ -1,6 +1,7 @@
+import { requerirSesion, cerrarSesion } from "./app.js"; // Cambia "app.js" por el nombre de tu archivo de login si es distinto
+
 const $ = id => document.getElementById(id), money = n => "$" + n.toFixed(2), r2 = n => Math.round(n * 100) / 100;
 // [nombre, precio con IVA, departamento, tasa IVA, código, stock, unidad]
-// código de 12 dígitos = base de un EAN-13 (se calcula el verificador); código corto (1, 2, 3...) = producto suelto
 const ean = b => { let s = 0; for (let i = 0; i < 12; i++) s += +b[i] * (i % 2 ? 3 : 1); return b + (10 - s % 10) % 10; };
 const P = [
 ["Leche Lala Entera 1 L",27.5,"Abarrotes",0,"750102050001",40],
@@ -338,7 +339,7 @@ setInterval(chipTurno, 30000);
 $("bTurno").onclick = () => {
   if (!turno) return;
   const fila = (x, y) => `<div><span>${x}</span><span>${y}</span></div>`, tr = turno.retiros.reduce((a, r) => a + r.monto, 0);
-  $("mBody").innerHTML = fila("Cajero", "cobrador@tienda.com") + fila("Caja", turno.caja)
+  $("mBody").innerHTML = fila("Cajero", document.querySelector(".who span:nth-child(2)").textContent) + fila("Caja", turno.caja)
     + fila("Inicio", turno.inicio.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + ", " + hhmm(turno.inicio)) + fila("Duración", duracion(turno.inicio))
     + fila("Fondo de caja", money(turno.fondo)) + fila("Tickets", turno.tickets) + fila("Artículos vendidos", turno.articulos) + fila("Ventas del turno", money(turno.venta))
     + fila("Retiros", turno.retiros.length ? turno.retiros.length + " · " + money(tr) : "Ninguno")
@@ -364,6 +365,7 @@ $("rOk").onclick = () => {
 };
 $("rOtro").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("rOk").click(); } };
 $("rMonto").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("rOk").click(); } };
+
 /* Reportar al dueño */
 function abrirReporte(ctx){
   if (!turno) return; ctx = ctx || {};
@@ -385,7 +387,7 @@ $("repOk").onclick = () => {
 const AVISOS = [
   { id: 1, cuando: "Hoy, 07:45", texto: "Hoy la tienda cierra a las 8 p. m.", importante: false },
   { id: 2, cuando: "Hoy, 07:50", texto: "No recibir billetes de $500 hasta nuevo aviso.", importante: true },
-  { id: 3, когда: "Ayer, 06:10", texto: "Promoción 2x1 en cervezas vigente hasta el 31 de octubre.", importante: false }
+  { id: 3, cuando: "Ayer, 06:10", texto: "Promoción 2x1 en cervezas vigente hasta el 31 de octubre.", importante: false }
 ];
 const leidos = new Set(); let avId = null;
 function pintarAvisos(){
@@ -400,6 +402,18 @@ $("bAv").onclick = () => {
 };
 $("avCerrar").onclick = () => { $("dAv").close(); $("code").focus(); };
 
-$("salir").onclick = () => hint("Aquí se cerrará la sesión y volverás al inicio de sesión.");
-render();
-abrirApertura();
+// --- PROTECCIÓN DE SESIÓN FIREBASE E INICIALIZACIÓN ---
+requerirSesion("cobrador", (usuario) => {
+  console.log("Sesión de Cobrador iniciada:", usuario.email);
+  
+  // Actualiza el correo en la interfaz con el real de Firebase
+  const emailSpan = document.querySelector(".who span:nth-child(2)");
+  if(emailSpan) emailSpan.textContent = usuario.email;
+
+  // Solo dibuja la interfaz y abre el turno si la sesión es válida
+  render();
+  abrirApertura();
+});
+
+// Botón de salir con Firebase
+$("salir").onclick = cerrarSesion;
