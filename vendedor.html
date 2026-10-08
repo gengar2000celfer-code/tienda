@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tienda · Caja</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><i aria-hidden="true">🛒</i> Caja</div>
+  <div class="who"><span class="rol">Cobrador</span><span>cobrador@tienda.com</span><button class="turnochip" id="bTurno" type="button">Turno sin abrir</button><button id="salir">Cerrar sesión</button></div>
+</header>
+
+<main class="wrap">
+  <section>
+    <div class="aviso info" id="avDueno" hidden><span id="avTxt"></span><button id="avOk" type="button">Entendido</button></div>
+    <div class="aviso" id="aviso" hidden><span>Hay mucho efectivo en caja. Haz un retiro para mayor seguridad.</span><button id="bAvisoRet" type="button">Retirar efectivo</button></div>
+    <form class="scan" id="scan" autocomplete="off">
+      <label for="code">Código de barras</label>
+      <input id="code" inputmode="text" placeholder="Código de barras" autofocus>
+      <button type="submit">Agregar</button>
+    </form>
+    <p class="hint" id="hint" role="status"><span id="hintTxt">Tip: 3*código agrega 3 piezas y 0.5*código agrega medio kilo. Si escribes un nombre, se abre la búsqueda.</span> <button class="hintAct" id="hintAct" type="button" hidden>Reportar al dueño</button></p>
+    <div class="paper" aria-label="Ticket">
+      <div class="tabs" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="row th"><span>Cant.</span><span>Artículo</span><span class="r u">P. unit.</span><span class="r">Importe</span></div>
+      <div id="rows"></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="box">
+      <h2>Opciones</h2>
+      <div class="opts">
+        <button id="bBuscar">Buscar<small>F2</small></button>
+        <button id="bCant" disabled>Cantidad<small>F4</small></button>
+        <button id="bEsp" disabled>Poner en espera<small>F7</small></button>
+        <button id="bRec" disabled>Recuperar<small>F8</small></button>
+        <button id="bBorrar" class="peligro" disabled>Borrar artículo<small>Supr</small></button>
+        <button id="bCancel" class="peligro" disabled>Cancelar venta<small>Esc</small></button>
+      </div>
+    </div>
+    <div class="box">
+      <h2>Caja y turno</h2>
+      <div class="opts">
+        <button id="bPromo">Promociones<small>F3</small></button>
+        <button id="bRet">Retiro de efectivo<small>Turno</small></button>
+        <button id="bRep">Reportar al dueño<small>Aviso</small></button>
+        <button id="bAv">Avisos<small>Del dueño</small></button>
+      </div>
+    </div>
+    <div class="box tot">
+      <div><span>Artículos</span><span id="art">0</span></div>
+      <div id="rowDesc" hidden><span>Promociones</span><span id="desc">−$0.00</span></div>
+      <div><span>IVA incluido</span><span id="iva">$0.00</span></div>
+      <div class="t"><span>Total</span><span id="tot">$0.00</span></div>
+    </div>
+    <button class="go" id="bCobrar" disabled>Cobrar<small>F9</small></button>
+  </aside>
+</main>
+
+<dialog id="dB">
+  <h3>Buscar producto</h3>
+  <input id="bq" placeholder="Nombre o código de barras" autocomplete="off" aria-label="Buscar producto">
+  <div class="res" id="res"></div>
+  <div class="acts"><button class="sec" id="bCerrarB" type="button" style="flex:1">Cerrar</button></div>
+</dialog>
+
+<dialog id="dP">
+  <h3>Cobrar</h3>
+  <div class="big" id="pTot">$0.00</div>
+  <div id="pList"></div>
+  <div class="pay" id="pay" role="group" aria-label="Forma de pago">
+    <button data-m="Efectivo" aria-pressed="true">Efectivo</button>
+    <button data-m="Tarjeta" aria-pressed="false">Tarjeta</button>
+    <button data-m="Transferencia" aria-pressed="false">Transferencia</button>
+  </div>
+  <div class="amt">
+    <input id="rec" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Monto" aria-label="Monto">
+    <button class="sec" id="bAdd" type="button" disabled>Agregar pago</button>
+  </div>
+  <div class="quick" id="quick"></div>
+  <div class="chg" id="chg"></div>
+  <div class="acts">
+    <button class="sec" id="bVolver" type="button">Volver</button>
+    <button class="go" id="bCerrar" disabled>Cerrar compra</button>
+  </div>
+</dialog>
+
+<dialog id="dA">
+  <h3>Apertura de turno</h3>
+  <p class="meta">Cajero: cobrador@tienda.com · Caja 1<br><span id="aHora"></span></p>
+  <label class="lbl" for="aMonto">¿Cuánto efectivo hay en caja?</label>
+  <input id="aMonto" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Fondo de caja">
+  <details><summary>Contar por denominaciones</summary><div class="den" id="den"></div></details>
+  <p class="nota">Este monto se descontará en el corte de caja. Se registra la hora de inicio de tu turno.</p>
+  <div class="acts"><button class="go" id="aOk" disabled>Abrir turno</button></div>
+</dialog>
+
+<dialog id="dM">
+  <h3>Mi turno</h3>
+  <div class="tl" id="mBody"></div>
+  <p class="nota">El conteo del efectivo lo compara el dueño en el corte de caja.</p>
+  <div class="acts"><button class="sec" id="mCerrar" type="button" style="flex:1">Cerrar</button></div>
+</dialog>
+
+<dialog id="dR">
+  <h3>Retiro de efectivo</h3>
+  <label class="lbl" for="rMonto">Monto a retirar</label>
+  <input id="rMonto" type="number" min="0" step="0.01" inputmode="decimal">
+  <label class="lbl" for="rMot">Motivo</label>
+  <select id="rMot"><option>Depósito a caja fuerte</option><option>Pago a proveedor</option><option>Gasto de la tienda</option><option>Otro</option></select>
+  <div id="rOtroBox" hidden><label class="lbl" for="rOtro">Especifica el motivo</label><input id="rOtro" maxlength="80" placeholder="¿Por qué retiras el efectivo?" autocomplete="off"></div>
+  <p class="hint mal" id="rErr" style="margin:6px 0 0"></p>
+  <div class="acts"><button class="sec" id="rNo" type="button">Cancelar</button><button class="go" id="rOk" type="button">Registrar retiro</button></div>
+</dialog>
+
+<dialog id="dRep">
+  <h3>Reportar al dueño</h3>
+  <label class="lbl" for="repTipo">¿Qué pasó?</label>
+  <select id="repTipo"><option>Código no encontrado</option><option>Precio incorrecto</option><option>Hay producto, pero el sistema dice agotado</option><option>Otro</option></select>
+  <label class="lbl" for="repProd">Código o producto</label>
+  <input id="repProd" maxlength="60" autocomplete="off" placeholder="Código de barras o nombre">
+  <label class="lbl" for="repNota">Comentario</label>
+  <input id="repNota" maxlength="120" autocomplete="off" placeholder="Ej.: el anaquel marca $25 y aquí sale $27.50">
+  <p class="hint mal" id="repErr" style="margin:6px 0 0"></p>
+  <div class="acts"><button class="sec" id="repNo" type="button">Cancelar</button><button class="go" id="repOk" type="button">Enviar reporte</button></div>
+</dialog>
+
+<dialog id="dAv">
+  <h3>Avisos del dueño</h3>
+  <div class="avl" id="avList"></div>
+  <div class="acts"><button class="sec" id="avCerrar" type="button" style="flex:1">Cerrar</button></div>
+</dialog>
+
+<dialog id="dPr">
+  <h3>Promociones</h3>
+  <p class="nota" style="margin-top:0">Toca una promoción para aplicarla a esta venta. Vuelve a tocarla para quitarla.</p>
+  <div class="prl" id="prList"></div>
+  <p class="nota">Las promociones las configura el dueño.</p>
+  <div class="acts"><button class="sec" id="prCerrar" type="button" style="flex:1">Listo</button></div>
+</dialog>
+
+<dialog id="dW">
+  <h3>Ventas en espera</h3>
+  <div class="hold" id="wList"></div>
+  <div class="acts"><button class="sec" id="wCerrar" type="button" style="flex:1">Cerrar</button></div>
+</dialog>
+
+<dialog id="dQ">
+  <h3>Cantidad</h3>
+  <p id="qNom" style="margin:0 0 8px;font-weight:600"></p>
+  <input id="qIn" type="number" min="0" inputmode="decimal" aria-label="Cantidad">
+  <p class="hint mal" id="qErr" style="margin:6px 0 0"></p>
+  <div class="acts"><button class="sec" id="qNo" type="button">Cancelar</button><button class="go" id="qOk" type="button">Aceptar</button></div>
+</dialog>
+
+<dialog id="dE">
+  <h3>¿Desea eliminar el producto?</h3>
+  <p id="eNom" style="margin:0 0 8px;font-weight:600"></p>
+  <div class="acts"><button class="sec" id="eNo" type="button">Cancelar</button><button class="go" id="eSi" type="button">Sí, eliminar</button></div>
+</dialog>
+
+<dialog id="dT"><pre id="tk"></pre><div class="acts"><button class="go" id="bNueva">Nueva venta</button></div></dialog>
+
+<script src="js/script.js"></script>
+</body>
+</html>
