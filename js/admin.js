@@ -1,10 +1,26 @@
+import { requerirSesion, cerrarSesion } from "./login.js"; // Cambia "login.js" por "app.js" si así se llama tu archivo
+
 // --- UTILIDADES ---
 const $ = id => document.getElementById(id);
 const money = n => "$" + parseFloat(n).toFixed(2);
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 const dateStr = d => d.toLocaleString('es-MX', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
 
-// --- BASES DE DATOS SIMULADAS (Estilo Firestore) ---
+// --- PROTECCIÓN DE SESIÓN FIREBASE ---
+// Esto verifica que el usuario haya iniciado sesión y tenga rol de "admin"
+requerirSesion("admin", (usuario) => {
+  console.log("Sesión de Admin iniciada:", usuario.email);
+  // Actualiza el correo en la barra superior con el del usuario real
+  document.querySelector(".who span:nth-child(2)").textContent = usuario.email;
+  
+  // Arrancamos el dashboard solo si pasó la seguridad
+  initDash();
+});
+
+// Botón de cerrar sesión real de Firebase
+$("salir").onclick = cerrarSesion;
+
+// --- BASES DE DATOS SIMULADAS (Estilo Firestore - Temporal) ---
 let DB = {
   usuarios: [
     { id: 'u1', nombre: 'Admin', correo: 'admin@tienda.com', rol: 'admin', activo: true },
@@ -15,11 +31,11 @@ let DB = {
     { id: 'p2', bar: '750100011120', sku: 'BIMBO-BL', name: 'Pan Bimbo Blanco', dep: 'Abarrotes', unit: 'pza', price: 46, iva: 0, stock: 5, min: 10, activo: true },
     { id: 'p3', bar: '3', sku: 'AZU-KG', name: 'Azúcar estándar suelta', dep: 'Abarrotes', unit: 'kg', price: 34, iva: 0, stock: 2.5, min: 10, activo: true }
   ],
-  privado: { // Separado por seguridad (simulando backend real)
+  privado: { 
     'p1': { cost: 22, prov: 'Lala' }, 'p2': { cost: 35, prov: 'Bimbo' }, 'p3': { cost: 28, prov: 'Central Abastos' }
   },
-  movimientos: [], // Kardex
-  reportesCaja: [ // Simula reportes enviados por el cobrador
+  movimientos: [], 
+  reportesCaja: [ 
     { id: 'r1', fecha: new Date(Date.now()-3600000), cajero: 'Juan Pérez', tipo: 'Precio incorrecto', prod: 'Coca Cola', nota: 'Marca $19 pero el anaquel dice $17' }
   ],
   avisos: []
@@ -30,7 +46,7 @@ if(DB.movimientos.length === 0) {
   DB.productos.forEach(p => logMovimiento(p.id, 'Inv. Inicial', p.stock, 0, p.stock, 'Carga inicial del sistema', 'Admin'));
 }
 
-// --- DASHBOARD (Carga inicial) ---
+// --- DASHBOARD ---
 function initDash() {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   $("fechaActual").textContent = new Date().toLocaleDateString('es-MX', options);
@@ -54,11 +70,10 @@ function updateBadges() {
   $("badgeAv").hidden = repCount === 0;
 }
 
-// --- NAVEGACIÓN ---
-$("goPOS").onclick = () => alert("Redirigiendo a la pantalla de Caja (POS)...");
+// --- NAVEGACIÓN ENTRE PANTALLAS ---
+$("goPOS").onclick = () => window.location.href = "vendedor.html";
 $("goCorte").onclick = () => alert("Abriendo asistente de Corte General...");
 $("goRep").onclick = () => alert("Abriendo módulo completo de Gráficas y Reportes...");
-$("salir").onclick = () => alert("Cerrando sesión...");
 
 // Manejo de Pestañas genérico
 document.querySelectorAll('.d-tabs button').forEach(btn => {
@@ -109,6 +124,7 @@ $("busqProd").oninput = () => renderProductos(document.querySelector('.d-tabs bu
 
 let editProdId = null;
 $("bNuevoProd").onclick = () => openFormProd(null);
+window.openFormProd = openFormProd; // Exponer al HTML global
 
 function openFormProd(id) {
   editProdId = id;
@@ -146,6 +162,7 @@ $("formProd").onsubmit = e => {
   renderProductos();
 };
 
+window.bajaProd = bajaProd;
 function bajaProd(id) {
   if(!confirm("¿Dar de baja este producto? Ya no saldrá en la caja, pero sus ventas pasadas se mantienen.")) return;
   DB.productos.find(x => x.id === id).activo = false;
@@ -154,6 +171,7 @@ function bajaProd(id) {
 
 // --- INVENTARIO (KARDEX) ---
 let ajusteProdId = null;
+window.openAjuste = openAjuste;
 function openAjuste(id) {
   ajusteProdId = id;
   const p = DB.productos.find(x => x.id === id);
@@ -220,6 +238,8 @@ function renderUsers() {
 
 let editUserId = null;
 $("bNuevoUser").onclick = () => openFormUser(null);
+window.openFormUser = openFormUser;
+
 function openFormUser(id) {
   editUserId = id;
   const f = $("formUser"); f.reset();
@@ -238,7 +258,6 @@ $("formUser").onsubmit = e => {
   e.preventDefault();
   const id = editUserId || generateId();
   const uData = { id, nombre: $("fuName").value, correo: $("fuEmail").value, rol: $("fuRol").value, activo: $("fuActivo").checked };
-  // Simulando guardado de pass en backend (auth) si fpPass tiene valor
   if(!editUserId) DB.usuarios.push(uData); else Object.assign(DB.usuarios.find(x => x.id === id), uData);
   $("dFormUser").close(); renderUsers();
 };
@@ -269,10 +288,8 @@ function renderReportesCaja() {
   ).join('') || '<p style="padding:10px;color:var(--ok)">Todo en orden, no hay reportes de caja.</p>';
 }
 
+window.resolverReporte = resolverReporte;
 function resolverReporte(id) {
   DB.reportesCaja = DB.reportesCaja.filter(r => r.id !== id);
   renderReportesCaja(); updateBadges();
-}
-
-// Arranque
-initDash();
+    }
