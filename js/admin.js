@@ -1,79 +1,62 @@
-import { requerirSesion, cerrarSesion } from "./login.js"; // Cambia "login.js" por "app.js" si así se llama tu archivo
+import { db, auth, requerirRol, cerrarSesion } from "./firebase.js";
+import { collection, doc, getDocs, getDoc, setDoc, updateDoc, addDoc, query, orderBy, serverTimestamp, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // --- UTILIDADES ---
 const $ = id => document.getElementById(id);
 const money = n => "$" + parseFloat(n).toFixed(2);
-const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
-const dateStr = d => d.toLocaleString('es-MX', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+// Formatear fechas de Firestore
+const dateStr = d => d?.toDate ? d.toDate().toLocaleString('es-MX', { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
 
-// --- PROTECCIÓN DE SESIÓN FIREBASE ---
-// Esto verifica que el usuario haya iniciado sesión y tenga rol de "admin"
-requerirSesion("admin", (usuario) => {
-  console.log("Sesión de Admin iniciada:", usuario.email);
-  // Actualiza el correo en la barra superior con el del usuario real
-  document.querySelector(".who span:nth-child(2)").textContent = usuario.email;
+let sesionGlobal = null;
+
+// --- PROTECCIÓN DE SESIÓN Y ARRANQUE ---
+// Exige que el usuario activo tenga el rol de "admin"
+requerirRol("admin").then(s => {
+  if (!s) return;
+  sesionGlobal = s;
+  console.log("Sesión de Admin iniciada:", s.perfil.nombre);
   
-  // Arrancamos el dashboard solo si pasó la seguridad
+  // Actualiza nombre y correo en la barra superior
+  document.querySelector(".who span:nth-child(2)").textContent = s.user.email;
+  document.querySelector(".who .rol").textContent = s.perfil.nombre;
+  
   initDash();
 });
 
-// Botón de cerrar sesión real de Firebase
+// Botón de salir
 $("salir").onclick = cerrarSesion;
-
-// --- BASES DE DATOS SIMULADAS (Estilo Firestore - Temporal) ---
-let DB = {
-  usuarios: [
-    { id: 'u1', nombre: 'Admin', correo: 'admin@tienda.com', rol: 'admin', activo: true },
-    { id: 'u2', nombre: 'Juan Pérez', correo: 'cobrador@tienda.com', rol: 'cobrador', activo: true }
-  ],
-  productos: [
-    { id: 'p1', bar: '750102050001', sku: 'LALA-1L', name: 'Leche Lala Entera 1 L', dep: 'Abarrotes', unit: 'pza', price: 27.5, iva: 0, stock: 40, min: 20, activo: true },
-    { id: 'p2', bar: '750100011120', sku: 'BIMBO-BL', name: 'Pan Bimbo Blanco', dep: 'Abarrotes', unit: 'pza', price: 46, iva: 0, stock: 5, min: 10, activo: true },
-    { id: 'p3', bar: '3', sku: 'AZU-KG', name: 'Azúcar estándar suelta', dep: 'Abarrotes', unit: 'kg', price: 34, iva: 0, stock: 2.5, min: 10, activo: true }
-  ],
-  privado: { 
-    'p1': { cost: 22, prov: 'Lala' }, 'p2': { cost: 35, prov: 'Bimbo' }, 'p3': { cost: 28, prov: 'Central Abastos' }
-  },
-  movimientos: [], 
-  reportesCaja: [ 
-    { id: 'r1', fecha: new Date(Date.now()-3600000), cajero: 'Juan Pérez', tipo: 'Precio incorrecto', prod: 'Coca Cola', nota: 'Marca $19 pero el anaquel dice $17' }
-  ],
-  avisos: []
-};
-
-// Inicialización de Kardex simulado (Inv. Inicial)
-if(DB.movimientos.length === 0) {
-  DB.productos.forEach(p => logMovimiento(p.id, 'Inv. Inicial', p.stock, 0, p.stock, 'Carga inicial del sistema', 'Admin'));
-}
 
 // --- DASHBOARD ---
 function initDash() {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   $("fechaActual").textContent = new Date().toLocaleDateString('es-MX', options);
   
-  // Resumen simulado
-  $("sumTk").textContent = "14";
-  $("sumProd").textContent = "42";
-  $("sumCob").textContent = DB.usuarios.filter(u => u.rol === 'cobrador' && u.activo).length;
-  $("sumIva").textContent = "$45.60";
-  $("sumTot").textContent = "$1,850.00";
-  
+  // Para el resumen, se pueden hacer consultas reales después. Por ahora calcularemos reportes y resurtir:
   updateBadges();
 }
 
-function updateBadges() {
-  const resurtirCount = DB.productos.filter(p => p.stock <= p.min && p.activo).length;
+async function updateBadges() {
+  // Contar productos por resurtir
+  const snapProd = await getDocs(collection(db, "productos"));
+  let resurtirCount = 0;
+  snapProd.forEach(d => {
+    const p = d.data();
+    if (p.activo && p.stock <= (p.stockMinimo || 5)) resurtirCount++;
+  });
   $("badgeResurtir").textContent = resurtirCount > 0 ? resurtirCount : "";
   
-  const repCount = DB.reportesCaja.length;
+  // Contar reportes sin resolver
+  const snapRep = await getDocs(collection(db, "reportes"));
+  let repCount = 0;
+  snapRep.forEach(d => { if (!d.data().resuelto) repCount++; });
   $("badgeAv").textContent = repCount;
   $("badgeAv").hidden = repCount === 0;
 }
 
-// --- NAVEGACIÓN ENTRE PANTALLAS ---
-$("goPOS").onclick = () => window.location.href = "vendedor.html";
-$("goCorte").onclick = () => alert("Abriendo asistente de Corte General...");
-$("goRep").onclick = () => alert("Abriendo módulo completo de Gráficas y Reportes...");
+// --- NAVEGACIÓN ---
+$("goPOS").onclick = () => window.location.href = "ventas.html"; // Ajustado al nombre real de tu caja
+$("goCorte").onclick = () => alert("Abriendo asistente de Corte General... (Próximo módulo)");
+$("goRep").onclick = () => alert("Abriendo Gráficas y Reportes... (Próximo módulo)");
 
 // Manejo de Pestañas genérico
 document.querySelectorAll('.d-tabs button').forEach(btn => {
@@ -84,39 +67,50 @@ document.querySelectorAll('.d-tabs button').forEach(btn => {
     e.target.classList.add('active');
     parent.querySelector(`#tab-${e.target.dataset.tab}`).hidden = false;
     
-    // Acciones específicas al cambiar pestaña
+    // Disparar lectura de BD según la pestaña
     if(e.target.dataset.tab === 'resurtir') renderProductos(true);
     if(e.target.dataset.tab === 'cat') renderProductos(false);
     if(e.target.dataset.tab === 'kardex') renderKardex();
+    if(e.target.dataset.tab === 'enviar') renderAvisos();
+    if(e.target.dataset.tab === 'recibidos') renderReportesCaja();
   }
 });
 
-// --- MÓDULO PRODUCTOS ---
+// --- MÓDULO PRODUCTOS Y KARDEX REAL ---
 $("goProd").onclick = () => { renderProductos(false); $("dProd").showModal(); };
 
-function renderProductos(soloResurtir = false) {
-  const query = $("busqProd").value.toLowerCase();
+async function renderProductos(soloResurtir = false) {
+  const queryTxt = $("busqProd").value.toLowerCase();
+  $("listaProd").innerHTML = '<tr><td colspan="6" style="text-align:center">Cargando productos...</td></tr>';
+  
+  const snap = await getDocs(collection(db, "productos"));
   let html = '';
-  DB.productos.filter(p => p.activo).forEach(p => {
-    if (soloResurtir && p.stock > p.min) return;
-    if (query && !p.name.toLowerCase().includes(query) && !p.bar.includes(query)) return;
+  
+  snap.forEach(docSnap => {
+    const p = docSnap.data();
+    p.id = docSnap.id;
+    if (!p.activo) return;
     
-    const isLow = p.stock <= p.min;
+    const min = p.stockMinimo || 5;
+    if (soloResurtir && p.stock > min) return;
+    if (queryTxt && !p.nombre.toLowerCase().includes(queryTxt) && !p.id.includes(queryTxt)) return;
+    
+    const isLow = p.stock <= min;
     const stockClass = isLow ? 'style="color:var(--bad);font-weight:700"' : '';
     
     html += `<tr>
-      <td><small>${p.sku || '-'}</small><br>${p.bar}</td>
-      <td>${p.name}</td>
-      <td ${stockClass}>${p.stock} ${p.unit} ${isLow ? '⚠️' : ''}</td>
-      <td>${money(p.price)}</td>
+      <td><small>${p.sku || 'S/N'}</small><br>${p.id}</td>
+      <td>${p.nombre}</td>
+      <td ${stockClass}>${p.stock} ${p.unidad} ${isLow ? '⚠️' : ''}</td>
+      <td>${money(p.precio)}</td>
       <td>
-        <button class="action-btn" onclick="openAjuste('${p.id}')">📦 Ajustar Inv.</button>
+        <button class="action-btn" onclick="openAjuste('${p.id}', '${p.nombre}', ${p.stock}, '${p.unidad}')">📦 Ajustar Inv.</button>
         <button class="action-btn" onclick="openFormProd('${p.id}')">✏️ Editar</button>
         <button class="action-btn del" onclick="bajaProd('${p.id}')">🗑️ Baja</button>
       </td>
     </tr>`;
   });
-  $("listaProd").innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:20px">No hay productos.</td></tr>';
+  $("listaProd").innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px">No hay productos.</td></tr>';
   updateBadges();
 }
 
@@ -124,172 +118,209 @@ $("busqProd").oninput = () => renderProductos(document.querySelector('.d-tabs bu
 
 let editProdId = null;
 $("bNuevoProd").onclick = () => openFormProd(null);
-window.openFormProd = openFormProd; // Exponer al HTML global
-
-function openFormProd(id) {
+window.openFormProd = async (id) => {
   editProdId = id;
   const f = $("formProd"); f.reset();
+  
   if(id) {
-    const p = DB.productos.find(x => x.id === id);
-    const priv = DB.privado[id] || {};
+    $("fpTitle").textContent = "Cargando...";
+    $("dFormProd").showModal();
+    
+    const pDoc = await getDoc(doc(db, "productos", id));
+    const privDoc = await getDoc(doc(db, "productosPrivado", id));
+    const p = pDoc.data();
+    const priv = privDoc.exists() ? privDoc.data() : {};
+
     $("fpTitle").textContent = "Editar Producto";
-    $("fpCode").value = p.bar; $("fpSku").value = p.sku; $("fpName").value = p.name;
-    $("fpDep").value = p.dep; $("fpUnit").value = p.unit; $("fpPrice").value = p.price;
-    $("fpIva").value = p.iva; $("fpStock").value = p.stock; $("fpMin").value = p.min;
-    $("fpCost").value = priv.cost \vert{}\vert{} 0; $("fpProv").value = priv.prov || '';
+    $("fpCode").value = id; $("fpCode").disabled = true; // El código no se edita
+    $("fpSku").value = p.sku \vert{}\vert{} ''; $("fpName").value = p.nombre;
+    $("fpDep").value = p.departamento \vert{}\vert{} 'Abarrotes'; $("fpUnit").value = p.unidad || 'pza'; 
+    $("fpPrice").value = p.precio; $("fpIva").value = p.iva; 
+    $("fpStock").value = p.stock; $("fpMin").value = p.stockMinimo || 5;
+    $("fpCost").value = priv.costo \vert{}\vert{} 0; $("fpProv").value = priv.proveedor || '';
   } else {
     $("fpTitle").textContent = "Nuevo Producto";
+    $("fpCode").disabled = false;
     $("fpStock").value = 0;
+    $("dFormProd").showModal();
   }
-  $("dFormProd").showModal();
 }
 
-$("formProd").onsubmit = e => {
+$("formProd").onsubmit = async e => {
   e.preventDefault();
-  const id = editProdId || generateId();
+  const id = $("fpCode").value.trim();
+  const batch = writeBatch(db);
+
   const prodData = {
-    id, bar: $("fpCode").value, sku: $("fpSku").value, name: $("fpName").value,
-    dep: $("fpDep").value, unit: $("fpUnit").value, price: parseFloat($("fpPrice").value),
-    iva: parseFloat($("fpIva").value), min: parseFloat($("fpMin").value), activo: true
+    nombre: $("fpName").value, sku: $("fpSku").value, departamento: $("fpDep").value,
+    unidad: $("fpUnit").value, precio: parseFloat($("fpPrice").value),
+    iva: parseFloat($("fpIva").value), stockMinimo: parseFloat($("fpMin").value),
+    activo: true, actualizado: serverTimestamp()
   };
-  
-  if(!editProdId) { prodData.stock = 0; DB.productos.push(prodData); } 
-  else { Object.assign(DB.productos.find(x => x.id === id), prodData); }
-  
-  DB.privado[id] = { cost: parseFloat($("fpCost").value), prov: $("fpProv").value };
-  
+
+  if(!editProdId) {
+    prodData.stock = 0;
+    prodData.creado = serverTimestamp();
+  }
+
+  // Guardamos datos públicos y privados separados
+  batch.set(doc(db, "productos", id), prodData, { merge: true });
+  batch.set(doc(db, "productosPrivado", id), {
+    costo: parseFloat($("fpCost").value), proveedor: $("fpProv").value
+  }, { merge: true });
+
   $("dFormProd").close();
+  await batch.commit();
   renderProductos();
 };
 
-window.bajaProd = bajaProd;
-function bajaProd(id) {
+window.bajaProd = async (id) => {
   if(!confirm("¿Dar de baja este producto? Ya no saldrá en la caja, pero sus ventas pasadas se mantienen.")) return;
-  DB.productos.find(x => x.id === id).activo = false;
+  await updateDoc(doc(db, "productos", id), { activo: false });
   renderProductos();
 }
 
-// --- INVENTARIO (KARDEX) ---
-let ajusteProdId = null;
-window.openAjuste = openAjuste;
-function openAjuste(id) {
-  ajusteProdId = id;
-  const p = DB.productos.find(x => x.id === id);
-  $("ajName").textContent = `${p.name} (Stock actual: ${p.stock} ${p.unit})`;
+// --- AJUSTES Y KARDEX ---
+let ajProdId = null; let ajStockAnt = 0;
+window.openAjuste = (id, nombre, stock, unidad) => {
+  ajProdId = id; ajStockAnt = stock;
+  $("ajName").textContent = `${nombre} (Stock actual: ${stock} ${unidad})`;
   $("formAjuste").reset();
   $("dAjuste").showModal();
 }
 
-$("formAjuste").onsubmit = e => {
+$("formAjuste").onsubmit = async e => {
   e.preventDefault();
-  const p = DB.productos.find(x => x.id === ajusteProdId);
   let qty = parseFloat($("ajCant").value);
   const tipo = $("ajTipo").value;
   const motivo = $("ajMotivo").value;
-  const stockAnt = p.stock;
   
-  if(tipo === 'merma') qty = -Math.abs(qty); // Forzar negativo
-  if(tipo === 'conteo') qty = qty - stockAnt; // Diferencia para llegar al nuevo stock
+  if(tipo === 'merma') qty = -Math.abs(qty); 
+  if(tipo === 'conteo') qty = qty - ajStockAnt; 
   
-  p.stock += qty;
-  logMovimiento(p.id, tipo.toUpperCase(), qty, stockAnt, p.stock, motivo, 'Admin');
+  const batch = writeBatch(db);
+  
+  // 1. Afectar el stock del producto
+  batch.update(doc(db, "productos", ajProdId), { 
+    stock: increment(qty), actualizado: serverTimestamp() 
+  });
+  
+  // 2. Registrar el movimiento inborrable en el Kardex
+  const movRef = doc(collection(db, "movimientos"));
+  batch.set(movRef, {
+    fecha: serverTimestamp(), prodId: ajProdId,
+    tipo: tipo.toUpperCase(), cant: qty, antes: ajStockAnt, despues: ajStockAnt + qty,
+    motivo: motivo, usuarioId: sesionGlobal.user.uid, usuarioNombre: sesionGlobal.perfil.nombre
+  });
   
   $("dAjuste").close();
+  await batch.commit();
   renderProductos(document.querySelector('.d-tabs button[data-tab="resurtir"]').classList.contains('active'));
   if(document.querySelector('.d-tabs button[data-tab="kardex"]').classList.contains('active')) renderKardex();
 };
 
-function logMovimiento(prodId, tipo, cant, antes, despues, motivo, usuario) {
-  DB.movimientos.unshift({ fecha: new Date(), prodId, tipo, cant, antes, despues, motivo, usuario });
-}
-
-function renderKardex() {
+async function renderKardex() {
+  $("listaKardex").innerHTML = '<tr><td colspan="6" style="text-align:center">Cargando kardex...</td></tr>';
+  const snap = await getDocs(query(collection(db, "movimientos"), orderBy("fecha", "desc")));
   let html = '';
-  DB.movimientos.forEach(m => {
-    const p = DB.productos.find(x => x.id === m.prodId);
+  snap.forEach(docSnap => {
+    const m = docSnap.data();
     const cColor = m.cant > 0 ? 'var(--ok)' : m.cant < 0 ? 'var(--bad)' : 'var(--mute)';
     html += `<tr>
       <td><small>${dateStr(m.fecha)}</small></td>
-      <td>${p ? p.name : 'Desc.'}</td>
+      <td><small>${m.prodId}</small></td>
       <td><b>${m.tipo}</b></td>
       <td style="color:${cColor}">${m.cant > 0 ? '+'+m.cant : m.cant}</td>
       <td>${m.despues}</td>
-      <td><small>${m.motivo}<br><i>Por: ${m.usuario}</i></small></td>
+      <td><small>${m.motivo}<br><i>Por: ${m.usuarioNombre}</i></small></td>
     </tr>`;
   });
-  $("listaKardex").innerHTML = html || '<tr><td colspan="6">No hay movimientos.</td></tr>';
+  $("listaKardex").innerHTML = html || '<tr><td colspan="6">No hay movimientos registrados.</td></tr>';
 }
 
-// --- MÓDULO USUARIOS ---
+// --- MÓDULO USUARIOS REAL ---
 $("goUsers").onclick = () => { renderUsers(); $("dUsers").showModal(); };
 
-function renderUsers() {
+async function renderUsers() {
+  $("listaUsers").innerHTML = '<tr><td colspan="5" style="text-align:center">Cargando...</td></tr>';
+  const snap = await getDocs(collection(db, "usuarios"));
   let html = '';
-  DB.usuarios.forEach(u => {
+  snap.forEach(docSnap => {
+    const u = docSnap.data();
     html += `<tr>
       <td>${u.nombre}</td><td>${u.correo}</td>
       <td><span class="rol ${u.rol === 'admin'?'admin':''}">${u.rol}</span></td>
       <td>${u.activo ? '✅ Activo' : '❌ Inactivo'}</td>
-      <td><button class="action-btn" onclick="openFormUser('${u.id}')">✏️ Editar</button></td>
+      <td><button class="action-btn" onclick="openFormUser('${docSnap.id}', '${u.nombre}', '${u.correo}', '${u.rol}', ${u.activo})">✏️ Editar</button></td>
     </tr>`;
   });
   $("listaUsers").innerHTML = html;
 }
 
-let editUserId = null;
-$("bNuevoUser").onclick = () => openFormUser(null);
-window.openFormUser = openFormUser;
-
-function openFormUser(id) {
-  editUserId = id;
-  const f = $("formUser"); f.reset();
-  if(id) {
-    const u = DB.usuarios.find(x => x.id === id);
-    $("fuTitle").textContent = "Editar Usuario";
-    $("fuName").value = u.nombre; $("fuEmail").value = u.correo;
-    $("fuRol").value = u.rol; $("fuActivo").checked = u.activo;
-  } else {
-    $("fuTitle").textContent = "Nuevo Usuario";
-  }
+window.openFormUser = (id, nombre, correo, rol, activo) => {
+  $("formUser").reset();
+  $("fuTitle").textContent = "Editar Usuario";
+  $("formUser").dataset.uid = id;
+  $("fuName").value = nombre; $("fuEmail").value = correo;
+  $("fuEmail").disabled = true; // El correo se rige por Authentication, mejor no editarlo aquí
+  $("fuRol").value = rol; $("fuActivo").checked = activo;
   $("dFormUser").showModal();
 }
 
-$("formUser").onsubmit = e => {
+$("bNuevoUser").onclick = () => alert("Para seguridad, los usuarios nuevos deben registrarse en la consola de Firebase Authentication primero, y luego asignarles su documento en Firestore.");
+
+$("formUser").onsubmit = async e => {
   e.preventDefault();
-  const id = editUserId || generateId();
-  const uData = { id, nombre: $("fuName").value, correo: $("fuEmail").value, rol: $("fuRol").value, activo: $("fuActivo").checked };
-  if(!editUserId) DB.usuarios.push(uData); else Object.assign(DB.usuarios.find(x => x.id === id), uData);
-  $("dFormUser").close(); renderUsers();
+  const id = $("formUser").dataset.uid;
+  await updateDoc(doc(db, "usuarios", id), {
+    nombre: $("fuName").value, rol: $("fuRol").value, activo: $("fuActivo").checked
+  });
+  $("dFormUser").close(); 
+  renderUsers();
 };
 
-// --- MÓDULO AVISOS Y REPORTES ---
+// --- AVISOS Y REPORTES ---
 $("goAv").onclick = () => { renderAvisos(); renderReportesCaja(); $("dAvList").showModal(); };
 
-$("formAviso").onsubmit = e => {
+$("formAviso").onsubmit = async e => {
   e.preventDefault();
-  DB.avisos.unshift({ id: generateId(), fecha: new Date(), texto: $("avTxt").value, imp: $("avImp").checked });
-  $("formAviso").reset(); renderAvisos(); alert("Aviso enviado a las cajas.");
+  await addDoc(collection(db, "avisos"), {
+    texto: $("avTxt").value, importante: $("avImp").checked, creado: serverTimestamp()
+  });
+  $("formAviso").reset(); renderAvisos();
+  alert("Aviso transmitido a las cajas.");
 };
 
-function renderAvisos() {
-  $("listaAvisos").innerHTML = DB.avisos.map(a => 
-    `<div class="${a.imp ? 'imp' : ''}"><small>${dateStr(a.fecha)} ${a.imp ? '· URGENTE' : ''}</small>${a.texto}</div>`
-  ).join('') || '<p style="padding:10px;color:var(--mute)">No hay avisos recientes.</p>';
+async function renderAvisos() {
+  const snap = await getDocs(query(collection(db, "avisos"), orderBy("creado", "desc")));
+  let html = '';
+  snap.forEach(docSnap => {
+    const a = docSnap.data();
+    html += `<div class="${a.importante ? 'imp' : ''}"><small>${dateStr(a.creado)} ${a.importante ? '· URGENTE' : ''}</small>${a.texto}</div>`;
+  });
+  $("listaAvisos").innerHTML = html || '<p style="padding:10px;color:var(--mute)">No hay avisos.</p>';
 }
 
-function renderReportesCaja() {
-  $("listaReportesCaja").innerHTML = DB.reportesCaja.map(r => 
-    `<div>
-      <small>${dateStr(r.fecha)} · De: ${r.cajero}</small>
+async function renderReportesCaja() {
+  const snap = await getDocs(collection(db, "reportes"));
+  let html = ''; let count = 0;
+  snap.forEach(docSnap => {
+    const r = docSnap.data();
+    if(r.resuelto) return;
+    count++;
+    html += `<div>
+      <small>${dateStr(r.creado)} · De: ${r.cobradorNombre || 'Cajero'}</small>
       <b>⚠️ ${r.tipo}</b>: ${r.prod}
       <p style="margin-top:4px">${r.nota}</p>
-      <button class="action-btn" style="margin-top:8px" onclick="resolverReporte('${r.id}')">✅ Marcar resuelto</button>
-    </div>`
-  ).join('') || '<p style="padding:10px;color:var(--ok)">Todo en orden, no hay reportes de caja.</p>';
+      <button class="action-btn" style="margin-top:8px" onclick="resolverReporte('${docSnap.id}')">✅ Marcar resuelto</button>
+    </div>`;
+  });
+  $("listaReportesCaja").innerHTML = html || '<p style="padding:10px;color:var(--ok)">Todo en orden, sin reportes.</p>';
+  $("badgeAv").textContent = count; $("badgeAv").hidden = count === 0;
 }
 
-window.resolverReporte = resolverReporte;
-function resolverReporte(id) {
-  DB.reportesCaja = DB.reportesCaja.filter(r => r.id !== id);
-  renderReportesCaja(); updateBadges();
-    }
+window.resolverReporte = async (id) => {
+  await updateDoc(doc(db, "reportes", id), { resuelto: true, fechaResuelto: serverTimestamp() });
+  renderReportesCaja();
+  }
+  
