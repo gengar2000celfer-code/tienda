@@ -39,7 +39,6 @@ label{display:block;margin-bottom:14px;font-size:14px;font-weight:600}
 .go{width:100%;padding:15px;border:0;border-radius:14px;background:var(--acc);color:#fff;font-weight:700;font-size:18px;cursor:pointer}
 .go:hover:not(:disabled){background:var(--acc-h)}
 .go:disabled{opacity:.55;cursor:wait}
-.link{display:block;margin:14px auto 0;background:none;border:0;color:var(--mute);text-decoration:underline;cursor:pointer;font-size:14px}
 .foot{margin:18px 0 0;text-align:center;font:400 12px "IBM Plex Mono",monospace;color:var(--mute)}
 
 @media (prefers-reduced-motion:no-preference){.ticket{animation:in .35s ease-out}@keyframes in{from{opacity:0;transform:translateY(10px)}}}
