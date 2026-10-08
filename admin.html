@@ -102,7 +102,7 @@
     </div>
   </div>
 
-  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+  <div class="acts"><button type="button" class="sec" onclick="document.getElementById('dProd').close()" style="width:100%">Cerrar</button></div>
 </dialog>
 
 <!-- Modal: Formulario de Producto -->
@@ -129,7 +129,7 @@
     
     <label>Stock actual <input type="number" step="0.001" id="fpStock" disabled placeholder="Usa ajustes para cambiar"></label>
     <label>Stock mínimo <input type="number" step="0.001" id="fpMin" required></label>
-    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
+    <div class="acts col-2"><button type="button" class="sec" onclick="document.getElementById('dFormProd').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
   </form>
 </dialog>
 
@@ -147,7 +147,7 @@
     </label>
     <label>Cantidad a afectar <input type="number" step="0.001" id="ajCant" required></label>
     <label class="col-2">Motivo / Notas <input id="ajMotivo" placeholder="Ej. Factura #123, Producto caducado..." required></label>
-    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Registrar Movimiento</button></div>
+    <div class="acts col-2"><button type="button" class="sec" onclick="document.getElementById('dAjuste').close()">Cancelar</button><button type="submit" class="go">Registrar Movimiento</button></div>
   </form>
 </dialog>
 
@@ -163,7 +163,7 @@
       <tbody id="listaUsers"></tbody>
     </table>
   </div>
-  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+  <div class="acts"><button type="button" class="sec" onclick="document.getElementById('dUsers').close()" style="width:100%">Cerrar</button></div>
 </dialog>
 
 <!-- Modal: Formulario de Usuario -->
@@ -175,7 +175,7 @@
     <label>Contraseña <input type="password" id="fuPass" placeholder="Dejar en blanco para no cambiar"></label>
     <label>Rol <select id="fuRol"><option value="cobrador">Cobrador</option><option value="admin">Administrador</option></select></label>
     <label class="col-2"><input type="checkbox" id="fuActivo" checked> Usuario Activo (Puede iniciar sesión)</label>
-    <div class="acts col-2"><button type="button" class="sec" onclick="this.closest('dialog').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
+    <div class="acts col-2"><button type="button" class="sec" onclick="document.getElementById('dFormUser').close()">Cancelar</button><button type="submit" class="go">Guardar</button></div>
   </form>
 </dialog>
 
@@ -197,10 +197,11 @@
   <div id="tab-recibidos" class="tab-content" hidden>
     <div id="listaReportesCaja" class="avl"></div>
   </div>
-  <div class="acts"><button class="sec" onclick="this.closest('dialog').close()" style="width:100%">Cerrar</button></div>
+  <div class="acts"><button type="button" class="sec" onclick="document.getElementById('dAvList').close()" style="width:100%">Cerrar</button></div>
 </dialog>
 
-<script src="js/admin.js"></script>
+<!-- ¡Ojo aquí con el type="module"! -->
+<script type="module" src="js/admin.js"></script>
 </body>
-    </html>
-      
+                                                  </html>
+  
