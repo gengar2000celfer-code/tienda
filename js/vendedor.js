@@ -1,419 +1,306 @@
-import { requerirSesion, cerrarSesion } from "./app.js"; // Cambia "app.js" por el nombre de tu archivo de login si es distinto
-
-const $ = id => document.getElementById(id), money = n => "$" + n.toFixed(2), r2 = n => Math.round(n * 100) / 100;
-// [nombre, precio con IVA, departamento, tasa IVA, código, stock, unidad]
+const $ = id => document.getElementById(id), money = n => "$" + n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const r2 = n => Math.round(n * 100) / 100, r3 = n => Math.round(n * 1000) / 1000;
 const ean = b => { let s = 0; for (let i = 0; i < 12; i++) s += +b[i] * (i % 2 ? 3 : 1); return b + (10 - s % 10) % 10; };
+const fh = d => d.toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+// [nombre, precio, departamento, IVA, código, stock, mínimo, unidad]
 const P = [
-["Leche Lala Entera 1 L",27.5,"Abarrotes",0,"750102050001",40],
-["Pan Bimbo Blanco Grande 680 g",46,"Abarrotes",0,"750100011120",25],
-["Huevo San Juan Blanco 12 pzas",52,"Abarrotes",0,"750105530007",3],
-["Arroz Verde Valle 1 kg",32,"Abarrotes",0,"750104009002",30],
-["Frijol Negro La Sierra 900 g",38,"Abarrotes",0,"750104001136",26],
-["Aceite 1-2-3 Vegetal 900 ml",44,"Abarrotes",0,"750102100094",20],
-["Atún Dolores en Agua 140 g",24,"Abarrotes",0,"750107200451",48],
-["Coca-Cola 600 ml",19,"Bebidas",0.16,"750105536305",60],
-["Agua Bonafont 1 L",13,"Bebidas",0,"750103131130",80],
-["Jugo del Valle Naranja 1 L",31,"Bebidas",0.16,"750101312704",18],
-["Nescafé Clásico 100 g",74,"Bebidas",0.16,"750105927315",0],
-["Sabritas Original 45 g",21,"Botanas",0.16,"750101111212",50],
-["Galletas Marías Gamesa 170 g",18,"Botanas",0.16,"750100061371",45],
-["Chocolate Carlos V 18 g",10,"Botanas",0.16,"750100013101",70],
-["Takis Fuego 56 g",20,"Botanas",0.16,"750101130506",42],
-["Jabón Zote Rosa 400 g",22,"Limpieza",0.16,"750102602001",36],
-["Detergente Ariel 850 g",52,"Limpieza",0.16,"750102540706",22],
-["Papel Higiénico Regio 4 rollos",44,"Limpieza",0.16,"750110881101",30],
-["Cloralex 1 L",21,"Limpieza",0.16,"750102210052",24],
-["Fibra Scotch-Brite Verde",11,"Limpieza",0.16,"750100330820",4],
-["Pasta Dental Colgate Triple Acción 75 ml",36,"Higiene",0.16,"750103640008",33],
-["Cigarros Marlboro Rojo cajetilla 20 pzas",96,"Tabaco",0.16,"750100222233",40],
-["Huevo suelto (pieza)",5.5,"Abarrotes",0,"1",120],
-["Cigarro Marlboro Rojo suelto",9,"Tabaco",0.16,"2",200],
-["Azúcar estándar suelta (kg)",34,"Abarrotes",0,"3",25,"kg"],
-["Cerveza Corona Extra 355 ml",22,"Cervezas",.16,"750100551122",96],
-["Cerveza Victoria 355 ml",20,"Cervezas",.16,"750100551245",72]
-].map((a,i)=>({id:i,name:a[0],price:a[1],cat:a[2],iva:a[3],bar:a[4].length === 12 ? ean(a[4]) : a[4],stock:a[5],unit:a[6]||"pza"}));
+["Leche Lala Entera 1 L",27.5,"Abarrotes",0,"750102050001",40,10],["Pan Bimbo Blanco Grande 680 g",46,"Abarrotes",0,"750100011120",25,8],
+["Huevo San Juan Blanco 12 pzas",52,"Abarrotes",0,"750105530007",3,10],["Arroz Verde Valle 1 kg",32,"Abarrotes",0,"750104009002",30,10],
+["Coca-Cola 600 ml",19,"Bebidas",.16,"750105536305",60,24],["Agua Bonafont 1 L",13,"Bebidas",0,"750103131130",80,30],
+["Jugo del Valle Naranja 1 L",31,"Bebidas",.16,"750101312704",18,8],["Nescafé Clásico 100 g",74,"Bebidas",.16,"750105927315",0,5],
+["Cerveza Corona Extra 355 ml",22,"Cervezas",.16,"750100551122",96,36],["Sabritas Original 45 g",21,"Botanas",.16,"750101111212",50,20],
+["Galletas Marías Gamesa 170 g",18,"Botanas",.16,"750100061371",45,15],["Detergente Ariel 850 g",52,"Limpieza",.16,"750102540706",22,8],
+["Fibra Scotch-Brite Verde",11,"Limpieza",.16,"750100330820",4,6],["Pasta Dental Colgate Triple Acción 75 ml",36,"Higiene",.16,"750103640008",33,10],
+["Huevo suelto (pieza)",5.5,"Abarrotes",0,"1",120,30],["Cigarro Marlboro Rojo suelto",9,"Tabaco",.16,"2",200,60],["Azúcar estándar suelta (kg)",34,"Abarrotes",0,"3",25,10,"kg"]
+].map(a => ({ nombre: a[0], precio: a[1], costo: r2(a[1] * .7), depto: a[2], iva: a[3], cod: a[4].length === 12 ? ean(a[4]) : a[4], stock: a[5], min: a[6], unidad: a[7] || "pza", activo: true }));
 
-let lines = [], sel = null, method = "Efectivo", folio = 1, confirma = null, promosSel = new Set();
-let repCtx = null;
-const hint = (t, mal, ctx) => { $("hintTxt").textContent = t || ""; $("hint").className = "hint" + (mal ? " mal" : ""); repCtx = ctx || null; $("hintAct").hidden = !ctx; };
-const linea = id => lines.find(l => l.id === id);
-const libre = () => ![...document.querySelectorAll("dialog")].some(d => d.open);
-
-function sums(ls = lines, ps = promosSel){
-  const d = {}, usados = new Set();
-  PROMOS.forEach((pr, ix) => {
-    if (!vigente(pr) || !ps.has(ix)) return;
-    const act = ls.filter(l => pr.ids.includes(l.id) && !usados.has(l.id)); if (!act.length) return;
-    if (pr.tipo === "nxm"){
-      const un = []; act.forEach(l => { for (let i = 0; i < Math.floor(l.n); i++) un.push({ id: l.id, p: P[l.id].price }); });
-      const libres = Math.floor(un.length / pr.n) * (pr.n - pr.m);
-      un.sort((x, y) => x.p - y.p).slice(0, libres).forEach(u => d[u.id] = r2((d[u.id] || 0) + u.p));
-      if (libres) act.forEach(l => usados.add(l.id));
-    } else act.forEach(l => { d[l.id] = r2(P[l.id].price * l.n * pr.pct / 100); usados.add(l.id); });
-  });
-  let t = 0, iva = 0, n = 0, desc = 0;
-  ls.forEach(l => { const p = P[l.id], neto = r2(p.price * l.n - (d[l.id] || 0)); t += neto; iva += neto - neto / (1 + p.iva); n += p.unit === "kg" ? 1 : l.n; desc += d[l.id] || 0; });
-  return { t: r2(t), iva: r2(iva), n, desc: r2(desc), d };
-}
-function render(){
-  const { t, iva, n, desc, d } = sums();
-  $("rows").innerHTML = lines.length ? lines.map(l => { const p = P[l.id];
-    return `<div class="row${l.id === sel ? " sel" : ""}" data-id="${l.id}"><span class="qty"><button data-d="-1" aria-label="Quitar uno">−</button><button class="qn" aria-label="Editar cantidad">${cant(l)}</button><button data-d="1" aria-label="Agregar uno">+</button></span><span>${p.name}<small>${p.bar}${p.iva ? "" : " · IVA 0%"}</small>${d[l.id] ? `<small class="promo">Promoción: −${money(d[l.id])}</small>` : ""}</span><span class="r u">${money(p.price)}${p.unit === "kg" ? "/kg" : ""}</span><span class="r">${money(r2(p.price * l.n - (d[l.id] || 0)))}</span></div>`; }).join("")
-    : '<p class="empty">Escanea o escribe un código para empezar.</p>';
-  $("art").textContent = n; $("iva").textContent = money(iva); $("tot").textContent = money(t);
-  $("rowDesc").hidden = !desc; $("desc").textContent = "−" + money(desc);
-  $("bCobrar").disabled = !lines.length; $("bCancel").disabled = !lines.length; $("bBorrar").disabled = sel === null; $("bCant").disabled = sel === null; actualizarEspera();
-  $("bPromo").firstChild.textContent = "Promociones" + (promosSel.size ? " (" + promosSel.size + ")" : "");
-  const f = $("rows").querySelector(".sel"); if (f) f.scrollIntoView({ block: "nearest" });
-}
-const q3 = n => Math.round(n * 1000) / 1000, cant = l => P[l.id].unit === "kg" ? l.n + " kg" : l.n;
-function agregar(id, n = 1){
-  const p = P[id], l = linea(id), ya = l ? l.n : 0, u = p.unit === "kg" ? " kg" : "";
-  if (p.stock <= 0) return hint(p.name + ": agotado.", 1, { tipo: "Hay producto, pero el sistema dice agotado", prod: p.name + " (" + p.bar + ")" });
-  if (q3(ya + n) > p.stock) return hint("Solo quedan " + p.stock + u + " de " + p.name + ".", 1);
-  if (l) l.n = q3(l.n + n); else lines.push({ id, n });
-  sel = id; hint(n + u + " × " + p.name + " agregado." + promoTip(id)); render();
-}
-
-/* Código de barras / SKU */
-$("scan").onsubmit = e => {
-  e.preventDefault();
-  let t = $("code").value.trim(); if (!t) return;
-  let n = 1; const m = t.match(/^(\d+(?:\.\d+)?)\*(.+)$/); if (m && +m[1] > 0){ n = +m[1]; t = m[2]; }
-  const p = P.find(p => p.bar === t);
-  if (p){ agregar(p.id, n); $("code").value = ""; }
-  else if (/^\d+$/.test(t)) hint("El código " + t + " no existe.", 1, { tipo: "Código no encontrado", prod: t });
-  else abrirBuscar(t);
-};
-
-/* Buscar por nombre */
-function listarB(){
-  const t = $("bq").value.trim().toLowerCase();
-  const r = P.filter(p => !t || p.name.toLowerCase().includes(t) || p.bar.startsWith(t));
-  $("res").innerHTML = r.map(p => `<button data-id="${p.id}" ${p.stock <= 0 ? "disabled" : ""}><span>${p.name}<small>${p.bar} · ${p.stock <= 0 ? "Agotado" : p.stock <= 5 ? "Últimas " + p.stock : "En existencia"}${PROMOS.some(x => vigente(x) && x.ids.includes(p.id)) ? " · Promo" : ""}</small></span><strong>${money(p.price)}${p.unit === "kg" ? "/kg" : ""}</strong></button>`).join("") || '<p class="empty" style="padding:24px 0">Sin resultados.</p>';
-}
-function abrirBuscar(txt){ $("bq").value = txt \vert{}\vert{} ""; listarB(); $("dB").showModal(); $("bq").focus(); $("bq").select(); }
-$("bBuscar").onclick = () => abrirBuscar($("code").value.trim());
-$("bq").oninput = listarB;
-$("bq").onkeydown = e => { if (e.key === "Enter"){ const b = $("res").querySelector("button:not(:disabled)"); if (b) b.click(); } };
-$("res").onclick = e => { const b = e.target.closest("[data-id]"); if (b){ agregar(+b.dataset.id); $("code").value = ""; $("dB").close(); } };
-$("bCerrarB").onclick = () => $("dB").close();
-
-/* Ticket: seleccionar, + / − */
-$("rows").onclick = e => {
-  const r = e.target.closest(".row"); if (!r) return;
-  const id = +r.dataset.id, b = e.target.closest("[data-d]");
-  if (e.target.closest(".qn")){ sel = id; return abrirCant(id); }
-  if (b){
-    const d = +b.dataset.d, l = linea(id), paso = P[id].unit === "kg" ? .25 : 1;
-    if (d > 0) return agregar(id, paso);
-    if (q3(l.n - paso) <= 0){ sel = id; render(); return pedirEliminar(id); }
-    l.n = q3(l.n - paso);
-  } else sel = id;
-  render();
-};
-
-let porEliminar = null;
-function pedirEliminar(id){ porEliminar = id; $("eNom").textContent = P[id].name; $("dE").showModal(); $("eSi").focus(); }
-$("eNo").onclick = () => { $("dE").close(); $("code").focus(); };
-$("eSi").onclick = () => { lines = lines.filter(x => x.id !== porEliminar); sel = null; hint(P[porEliminar].name + " eliminado del ticket."); $("dE").close(); render(); $("code").focus(); };
-
-/* Opciones */
-$("bBorrar").onclick = () => borrar();
-function borrar(){
-  if (sel === null) return hint("Toca un artículo del ticket para seleccionarlo.", 1);
-  const p = P[sel]; lines = lines.filter(l => l.id !== sel); sel = null;
-  hint(p.name + " borrado del ticket."); render(); $("code").focus();
-}
-$("bCancel").onclick = () => cancelar();
-function cancelar(){
-  if (!lines.length) return;
-  if (!confirma){
-    $("bCancel").firstChild.textContent = "¿Seguro? Toca otra vez";
-    confirma = setTimeout(restablecer, 3000); return;
-  }
-  lines = []; sel = null; promosSel = new Set(); hint("Venta cancelada."); restablecer(); render(); $("code").focus();
-}
-function restablecer(){ clearTimeout(confirma); confirma = null; $("bCancel").firstChild.textContent = "Cancelar venta"; }
-
-/* Cantidad editable */
-let cantId = null;
-function abrirCant(id){
-  if (id === null || id === undefined) return hint("Toca un artículo del ticket para cambiar su cantidad.", 1);
-  const p = P[id], l = linea(id); cantId = id; sel = id; render();
-  $("qNom").textContent = p.name + " · " + (p.unit === "kg" ? "kilos" : "piezas") + " (disponibles: " + p.stock + ")";
-  $("qIn").step = p.unit === "kg" ? "0.001" : "1"; $("qIn").value = l.n; $("qErr").textContent = "";
-  $("dQ").showModal(); $("qIn").focus(); $("qIn").select();
-}
-function aplicarCant(){
-  const p = P[cantId], v = parseFloat($("qIn").value);
-  if (!(v >= 0)) return ($("qErr").textContent = "Escribe una cantidad válida.");
-  if (p.unit !== "kg" && !Number.isInteger(v)) return ($("qErr").textContent = "Este producto se vende por pieza: usa un número entero.");
-  if (q3(v) > p.stock) return ($("qErr").textContent = "Solo hay " + p.stock + (p.unit === "kg" ? " kg" : " piezas") + " en existencia.");
-  $("dQ").close();
-  if (v === 0) return pedirEliminar(cantId);
-  linea(cantId).n = q3(v); hint("Cantidad actualizada."); render(); $("code").focus();
-}
-$("bCant").onclick = () => abrirCant(sel);
-$("qOk").onclick = aplicarCant;
-$("qNo").onclick = () => { $("dQ").close(); $("code").focus(); };
-$("qIn").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); aplicarCant(); } };
-
-/* Venta en espera */
-let espera = [], nEspera = 0;
-function actualizarEspera(){
-  $("bRec").firstChild.textContent = "Recuperar" + (espera.length ? " (" + espera.length + ")" : "");
-  $("bRec").disabled = !espera.length; $("bEsp").disabled = !lines.length;
-}
-function ponerEspera(){
-  if (!lines.length) return hint("No hay nada que poner en espera.", 1);
-  espera.push({ n: ++nEspera, hora: new Date(), lines: lines.map(l => ({ ...l })), promos: new Set(promosSel) });
-  lines = []; sel = null; promosSel = new Set(); hint("Venta puesta en espera. Puedes atender al siguiente cliente."); render(); $("code").focus();
-}
-function abrirEspera(){
-  if (!espera.length) return;
-  $("wList").innerHTML = espera.map((w, i) => {
-    const { t: tot, n: art } = sums(w.lines, w.promos);
-    return `<div><span>Espera #${w.n}<small>${w.hora.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ${art} artículos · ${money(tot)}</small></span><button data-r="${i}">Recuperar</button><button data-q="${i}">Descartar</button></div>`; }).join("");
-  if (!$("dW").open) $("dW").showModal();
-}
-function recuperar(i){
-  const w = espera[i]; espera.splice(i, 1);
-  if (lines.length) espera.push({ n: ++nEspera, hora: new Date(), lines, promos: new Set(promosSel) });
-  let ajustado = false;
-  lines = w.lines.map(l => { const mx = P[l.id].stock; if (l.n > mx){ ajustado = true; l.n = mx; } return l; }).filter(l => l.n > 0);
-  sel = null; promosSel = new Set(w.promos); $("dW").close();
-  hint("Venta en espera #" + w.n + " recuperada." + (ajustado ? " Se ajustaron cantidades por existencias." : ""), ajustado);
-  render(); $("code").focus();
-}
-$("bEsp").onclick = ponerEspera;
-$("bRec").onclick = abrirEspera;
-$("wCerrar").onclick = () => $("dW").close();
-$("wList").onclick = e => {
-  const r = e.target.closest("[data-r]"), q = e.target.closest("[data-q]");
-  if (r) return recuperar(+r.dataset.r);
-  if (!q) return;
-  if (q.dataset.sure){ espera.splice(+q.dataset.q, 1); render(); if (espera.length) abrirEspera(); else $("dW").close(); }
-  else { q.dataset.sure = 1; q.textContent = "¿Seguro?"; }
-};
-
-/* Cobrar: ventana de pago (pago mixto) */
-let pagos = [], uid = null, enCurso = false;
-const sumaPagos = () => r2(pagos.reduce((a, p) => a + p.monto, 0));
-const restoPago = () => r2(sums().t - sumaPagos());
-function estadoPago(){
-  const t = sums().t, pend = parseFloat($("rec").value) || 0;
-  const todos = pend > 0 ? pagos.concat([{ m: method, monto: r2(pend) }]) : pagos;
-  const noEf = r2(todos.filter(p => p.m !== "Efectivo").reduce((a, p) => a + p.monto, 0));
-  const ef = r2(todos.filter(p => p.m === "Efectivo").reduce((a, p) => a + p.monto, 0));
-  const needed = r2(t - noEf);
-  return { t, pend, todos, noEf, ef, ok: todos.length > 0 && noEf <= t && ef >= needed,
-           cambio: r2(Math.max(0, ef - Math.max(needed, 0))), falta: r2(Math.max(0, needed - ef)) };
-}
-function cobrar(){
-  if (!lines.length || !turno) return;
-  restablecer(); pagos = []; method = "Efectivo"; enCurso = false;
-  uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  [...$("pay").children].forEach((x, i) => x.setAttribute("aria-pressed", i === 0));
-  $("rec").value = sums().t; pago();
-  $("dP").showModal(); $("rec").focus(); $("rec").select();
-}
-function pago(){
-  const e = estadoPago(), resto = restoPago();
-  $("pTot").textContent = money(e.t);
-  $("pList").innerHTML = pagos.length ? '<div class="plist">' + pagos.map((p, i) => `<div><span>${p.m}</span><span>${money(p.monto)} <button data-x="${i}" aria-label="Quitar pago">×</button></span></div>`).join("") + "</div>" : "";
-  const set = new Set([resto]); [20, 50, 100, 200, 500, 1000].forEach(b => { if (b >= resto) set.add(b); });
-  $("quick").innerHTML = method === "Efectivo" && resto > 0 ? [...set].slice(0, 5).map(v => `<button data-v="${v}">${v === resto ? "Exacto" : "$" + v}</button>`).join("") : "";
-  $("chg").textContent = !e.todos.length ? "" : e.ok ? (e.cambio > 0 ? "Cambio: " + money(e.cambio) : "Pago completo")
-    : e.noEf > e.t ? "Tarjeta o transferencia no puede pasar del total." : "Faltan " + money(e.falta);
-  $("chg").style.color = e.ok ? "var(--ok)" : "var(--bad)";
-  $("bAdd").disabled = !(e.pend > 0 && !e.ok && e.noEf <= e.t);
-  $("bCerrar").disabled = !e.ok || enCurso;
-}
-function sugerirResto(){ const r = restoPago(); $("rec").value = r > 0 ? r : ""; pago(); $("rec").focus(); $("rec").select(); }
-$("bCobrar").onclick = cobrar;
-$("pay").onclick = e => { const b = e.target.closest("[data-m]"); if (!b) return; method = b.dataset.m; [...$("pay").children].forEach(x => x.setAttribute("aria-pressed", x === b)); sugerirResto(); };
-$("quick").onclick = e => { const b = e.target.closest("[data-v]"); if (b){ $("rec").value = b.dataset.v; pago(); $("bCerrar").focus(); } };
-$("pList").onclick = e => { const b = e.target.closest("[data-x]"); if (b){ pagos.splice(+b.dataset.x, 1); sugerirResto(); } };
-$("bAdd").onclick = () => { const e = estadoPago(); if (!(e.pend > 0) || e.noEf > e.t) return; pagos.push({ m: method, monto: r2(e.pend) }); sugerirResto(); };
-$("rec").oninput = pago;
-$("rec").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); if (!$("bCerrar").disabled) $("bCerrar").click(); else if (!$("bAdd").disabled) $("bAdd").click(); } };
-$("bVolver").onclick = () => { $("dP").close(); $("code").focus(); };
-
-/* Cerrar compra */
-$("bCerrar").onclick = () => {
-  if (enCurso) return;
-  const e = estadoPago(); if (!e.ok) return;
-  enCurso = true; $("bCerrar").disabled = true;
-  const { t, iva, n, desc, d } = sums();
-  let tk = `TIENDA\nTicket #${String(folio).padStart(4, "0")}\n${new Date().toLocaleString("es-MX")}\nAtendió: cobrador\nCaja ${turno.caja} · Turno ${hhmm(turno.inicio)}\n--------------------------\n`;
-  lines.forEach(l => { const p = P[l.id]; p.stock = q3(p.stock - l.n); tk += `${cant(l)} x ${p.name}\n   ${money(r2(p.price * l.n))}\n`; if (d[l.id]) tk += `   Promoción: -${money(d[l.id])}\n`; });
-  tk += `--------------------------\nArtículos: ${n}\n${desc ? "Ahorro por promociones: " + money(desc) + "\n" : ""}IVA incluido: ${money(iva)}\nTOTAL: ${money(t)}\n`;
-  e.todos.forEach(p => tk += `${p.m}: ${money(p.monto)}\n`);
-  if (e.cambio > 0) tk += `Cambio: ${money(e.cambio)}\n`;
-  $("tk").textContent = tk + "\n¡Gracias por su compra!";
-  turno.tickets++; turno.articulos += n; turno.venta = r2(turno.venta + t); turno.efectivo = r2(turno.efectivo + e.ef - e.cambio); revisarAviso();
-  folio++; $("dP").close(); $("dT").showModal(); $("bNueva").focus();
-};
-$("bNueva").onclick = () => { enCurso = false; pagos = []; $("dT").close(); lines = []; sel = null; promosSel = new Set(); hint("Venta cerrada. Lista para la siguiente."); render(); $("code").focus(); };
-$("dT").addEventListener("cancel", e => e.preventDefault());
-
-/* Atajos de teclado */
-document.addEventListener("keydown", e => {
-  if (e.key === "F2"){ e.preventDefault(); if (libre()) abrirBuscar($("code").value.trim()); }
-  else if (e.key === "F3"){ e.preventDefault(); if (libre()) abrirPromos(); }
-  else if (e.key === "F4"){ e.preventDefault(); if (libre()) abrirCant(sel); }
-  else if (e.key === "F7"){ e.preventDefault(); if (libre()) ponerEspera(); }
-  else if (e.key === "F8"){ e.preventDefault(); if (libre()) abrirEspera(); }
-  else if (e.key === "F9"){ e.preventDefault(); if (libre()) cobrar(); }
-  else if (e.key === "Delete" && libre() && !$("code").value) borrar();
-  else if (e.key === "Escape" && libre() && lines.length) cancelar();
-});
-
-/* Promociones */
-const pid = n => P.find(p => p.name.startsWith(n)).id;
+const prod = c => P.find(p => p.cod === c), deps = () => [...new Set(P.map(p => p.depto))];
+const h = n => new Date(Date.now() - n * 3600e3);
+const MOV = [
+  { f: h(5), cod: P[0].cod, nom: P[0].nombre, tipo: "Entrada por compra", cant: 24, antes: 16, desp: 40, motivo: "Proveedor: Lala" },
+  { f: h(3), cod: P[2].cod, nom: P[2].nombre, tipo: "Merma", cant: -2, antes: 5, desp: 3, motivo: "Dañado" },
+  { f: h(2), cod: P[7].cod, nom: P[7].nombre, tipo: "Conteo físico", cant: -1, antes: 1, desp: 0, motivo: "Conteo: había 1, se contó 0" }
+];
+const T = [
+  { id: 1, cajero: "Cobrador", caja: "1", inicio: h(6), fondo: 500, ef: 3420.5, tj: 1860, tr: 350, tk: 14, ret: [{ h: h(2), m: 1000, mot: "Depósito a caja fuerte" }], estado: "abierto" },
+  { id: 2, cajero: "Cobrador", caja: "1", inicio: h(30), fin: h(22), fondo: 500, ef: 2100, tj: 900, tr: 0, tk: 9, ret: [], estado: "cerrado", contado: 2580, dif: -20, nota: "Faltó cambio de $20" }
+];
+const esperado = t => r2(t.fondo + t.ef - t.ret.reduce((a, r) => a + r.m, 0));
+let sec = "inicio", dep = "Todos", prodSel = null, tipo = "entrada", edit = null, cor = null, elim = null, promoEd = null, promoProds = [];
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const cd = n => P.find(p => p.nombre.startsWith(n)).cod;
+const etq = p => p.tipo === "nxm" ? p.n + "x" + p.m : "−" + p.pct + "%", regla = p => p.tipo === "nxm" ? "Lleva " + p.n + " y paga " + p.m : p.pct + "% de descuento";
 const PROMOS = [
-  { nom: "2x1 en cervezas", tipo: "nxm", n: 2, m: 1, ids: [pid("Cerveza Corona"), pid("Cerveza Victoria")], etiqueta: "2x1", vigencia: "Del 1 al 31 de octubre" },
-  { nom: "3x2 en Galletas Marías Gamesa", tipo: "nxm", n: 3, m: 2, ids: [pid("Galletas Marías")], etiqueta: "3x2", vigencia: "Hasta agotar existencias" },
-  { nom: "15% en Detergente Ariel 850 g", tipo: "pct", pct: 15, ids: [pid("Detergente Ariel")], etiqueta: "−15%", vigencia: "Del 5 al 18 de octubre" },
-  { nom: "Martes de lácteos: 20% en Leche Lala", tipo: "pct", pct: 20, ids: [pid("Leche Lala")], etiqueta: "−20%", vigencia: "Todos los martes", dias: [2] }
+  { id: 1, nom: "2x1 en cervezas", tipo: "nxm", n: 2, m: 1, pct: 0, prods: [cd("Cerveza Corona")], vig: "Del 1 al 31 de octubre", dias: [], activa: true },
+  { id: 2, nom: "3x2 en Galletas Marías Gamesa", tipo: "nxm", n: 3, m: 2, pct: 0, prods: [cd("Galletas Marías")], vig: "Hasta agotar existencias", dias: [], activa: true },
+  { id: 3, nom: "15% en Detergente Ariel 850 g", tipo: "pct", n: 0, m: 0, pct: 15, prods: [cd("Detergente Ariel")], vig: "Del 5 al 18 de octubre", dias: [], activa: true },
+  { id: 4, nom: "Martes de lácteos: 20% en Leche Lala", tipo: "pct", n: 0, m: 0, pct: 20, prods: [cd("Leche Lala")], vig: "Todos los martes", dias: [2], activa: false }
 ];
-const vigente = pr => !pr.dias || pr.dias.includes(new Date().getDay());
-const regla = pr => pr.tipo === "nxm" ? "Lleva " + pr.n + " y paga " + pr.m : pr.pct + "% de descuento";
-function promoTip(id){
-  const ix = PROMOS.findIndex(x => vigente(x) && x.ids.includes(id)); if (ix < 0) return "";
-  const pr = PROMOS[ix];
-  if (!promosSel.has(ix)) return " Hay promoción " + pr.etiqueta + " disponible: ábrela con F3.";
-  if (pr.tipo === "pct") return " Promo " + pr.etiqueta + " aplicada.";
-  const u = lines.filter(l => pr.ids.includes(l.id)).reduce((a, l) => a + l.n, 0), falta = (pr.n - u % pr.n) % pr.n;
-  return falta ? " Promo " + pr.etiqueta + ": agrega " + falta + " más para activarla." : " Promo " + pr.etiqueta + " aplicada.";
-}
-function pintarPromos(){
-  const card = ix => {
-    const pr = PROMOS[ix], act = vigente(pr), on = promosSel.has(ix), ahorro = sums(lines, new Set([ix])).desc;
-    const u = lines.filter(l => pr.ids.includes(l.id)).reduce((a, l) => a + l.n, 0);
-    const estado = !act ? "Disponible: " + pr.dias.map(x => DIAS[x]).join(", ")
-      : !on ? "Toca para aplicarla"
-      : ahorro > 0 ? "✓ Aplicada · ahorras " + money(ahorro)
-      : pr.tipo === "nxm" && u ? "✓ Seleccionada · agrega " + (pr.n - u) + " más para activarla" : "✓ Seleccionada · agrega productos de la promoción";
-    return `<button class="pr${act ? "" : " off"}" data-ix="${ix}" aria-pressed="${on}" ${act ? "" : "disabled"}><b>${pr.etiqueta}</b><span>${pr.nom}<small>${regla(pr)} · ${pr.ids.map(i => P[i].name).join(" / ")}</small><small>${pr.vigencia}</small><small class="${on ? "ok" : ""}">${estado}</small></span></button>`;
-  };
-  $("prList").innerHTML = PROMOS.map((_, i) => i).sort((x, y) => vigente(PROMOS[y]) - vigente(PROMOS[x])).map(card).join("");
-}
-function abrirPromos(){ pintarPromos(); if (!$("dPr").open) $("dPr").showModal(); }
-$("bPromo").onclick = abrirPromos;
-$("prList").onclick = e => {
-  const b = e.target.closest("[data-ix]"); if (!b || b.disabled) return;
-  const ix = +b.dataset.ix; if (promosSel.has(ix)) promosSel.delete(ix); else promosSel.add(ix);
-  render(); pintarPromos();
-};
-$("prCerrar").onclick = () => { $("dPr").close(); $("code").focus(); };
-
-/* Turno */
-const LIMITE_CAJA = 3000;
-const DENOM = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5];
-let turno = null;
-const hhmm = d => d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-const duracion = d => { const m = Math.max(0, Math.floor((Date.now() - d) / 60000)); return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") + " h"; };
-const efectivoCaja = () => r2(turno.fondo + turno.efectivo - turno.retiros.reduce((a, r) => a + r.monto, 0));
-function chipTurno(){ $("bTurno").textContent = turno ? "Caja " + turno.caja + " · Turno desde " + hhmm(turno.inicio) + " · " + duracion(turno.inicio) : "Turno sin abrir"; }
-function revisarAviso(){ $("aviso").hidden = !(turno && efectivoCaja() >= LIMITE_CAJA); }
-function validarA(){ $("aOk").disabled = !(parseFloat($("aMonto").value) >= 0); }
-function abrirApertura(){
-  $("aHora").textContent = new Date().toLocaleString("es-MX", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  $("dA").showModal(); $("aMonto").focus();
-}
-$("den").innerHTML = DENOM.map(v => `<label><span>${v >= 1 ? "$" + v : "50¢"}</span><input type="number" min="0" step="1" inputmode="numeric" data-v="${v}" placeholder="0"></label>`).join("");
-$("den").oninput = () => { const tot = [...$("den").querySelectorAll("input")].reduce((a, i) => a + (parseInt(i.value) \vert{}\vert{} 0) * +i.dataset.v, 0); $("aMonto").value = tot || ""; validarA(); };
-$("aMonto").oninput = () => { $("den").querySelectorAll("input").forEach(i => i.value = ""); validarA(); };
-$("aMonto").onkeydown = e => { if (e.key === "Enter" && !$("aOk").disabled){ e.preventDefault(); $("aOk").click(); } };
-$("aOk").onclick = () => {
-  turno = { inicio: new Date(), fondo: r2(parseFloat($("aMonto").value)), caja: "1", retiros: [], reportes: [], tickets: 0, articulos: 0, venta: 0, efectivo: 0 };
-  $("dA").close(); chipTurno(); revisarAviso(); pintarAvisos();
-  hint("Turno abierto a las " + hhmm(turno.inicio) + " con fondo de " + money(turno.fondo) + "."); $("code").focus();
-};
-$("dA").addEventListener("cancel", e => e.preventDefault());
-setInterval(chipTurno, 30000);
-
-$("bTurno").onclick = () => {
-  if (!turno) return;
-  const fila = (x, y) => `<div><span>${x}</span><span>${y}</span></div>`, tr = turno.retiros.reduce((a, r) => a + r.monto, 0);
-  $("mBody").innerHTML = fila("Cajero", document.querySelector(".who span:nth-child(2)").textContent) + fila("Caja", turno.caja)
-    + fila("Inicio", turno.inicio.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + ", " + hhmm(turno.inicio)) + fila("Duración", duracion(turno.inicio))
-    + fila("Fondo de caja", money(turno.fondo)) + fila("Tickets", turno.tickets) + fila("Artículos vendidos", turno.articulos) + fila("Ventas del turno", money(turno.venta))
-    + fila("Retiros", turno.retiros.length ? turno.retiros.length + " · " + money(tr) : "Ninguno")
-    + turno.retiros.map(r => `<div class="sub"><span>${hhmm(r.hora)} · ${r.motivo}</span><span>−${money(r.monto)}</span></div>`).join("")
-    + fila("Reportes al dueño", turno.reportes.length || "Ninguno")
-    + turno.reportes.map(r => `<div class="sub"><span>${hhmm(r.hora)} · ${r.tipo}: ${r.prod}</span><span></span></div>`).join("");
-  $("dM").showModal();
-};
-$("mCerrar").onclick = () => { $("dM").close(); $("code").focus(); };
-
-function abrirRetiro(){ if (!turno) return; $("rMonto").value = ""; $("rErr").textContent = ""; $("rMot").selectedIndex = 0; $("rOtroBox").hidden = true; $("rOtro").value = ""; $("dR").showModal(); $("rMonto").focus(); }
-$("bRet").onclick = abrirRetiro; $("bAvisoRet").onclick = abrirRetiro;
-$("rNo").onclick = () => { $("dR").close(); $("code").focus(); };
-$("rMot").onchange = () => { $("rOtroBox").hidden = $("rMot").value !== "Otro"; $("rErr").textContent = ""; if (!$("rOtroBox").hidden) $("rOtro").focus(); };
-$("rOk").onclick = () => {
-  const v = r2(parseFloat($("rMonto").value)), otro = $("rMot").value === "Otro", txt = $("rOtro").value.trim();
-  if (!(v > 0)) return ($("rErr").textContent = "Escribe un monto mayor a cero.");
-  if (otro && txt.length < 5){ $("rOtro").focus(); return ($("rErr").textContent = "Escribe por qué retiras el efectivo (mínimo 5 letras)."); }
-  if (v > efectivoCaja()) return ($("rErr").textContent = "El monto es mayor al efectivo registrado en caja.");
-  const motivo = otro ? "Otro: " + txt : $("rMot").value;
-  turno.retiros.push({ hora: new Date(), monto: v, motivo });
-  $("dR").close(); hint("Retiro de " + money(v) + " registrado. Motivo: " + motivo.toLowerCase() + "."); revisarAviso(); $("code").focus();
-};
-$("rOtro").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("rOk").click(); } };
-$("rMonto").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("rOk").click(); } };
-
-/* Reportar al dueño */
-function abrirReporte(ctx){
-  if (!turno) return; ctx = ctx || {};
-  $("repTipo").value = ctx.tipo || "Código no encontrado"; $("repProd").value = ctx.prod || ""; $("repNota").value = ""; $("repErr").textContent = "";
-  $("dRep").showModal(); ($("repProd").value ? $("repNota") : $("repProd")).focus();
-}
-$("bRep").onclick = () => abrirReporte();
-$("hintAct").onclick = () => abrirReporte(repCtx);
-$("repNo").onclick = () => { $("dRep").close(); $("code").focus(); };
-$("repOk").onclick = () => {
-  const prod = $("repProd").value.trim(), nota = $("repNota").value.trim(), tipo = $("repTipo").value;
-  if (!prod){ $("repProd").focus(); return ($("repErr").textContent = "Indica el código o el nombre del producto."); }
-  if (tipo === "Otro" && nota.length < 5){ $("repNota").focus(); return ($("repErr").textContent = "Cuéntale al dueño qué pasó (mínimo 5 letras)."); }
-  turno.reportes.push({ hora: new Date(), tipo, prod, nota });
-  $("dRep").close(); hint("Reporte enviado al dueño. Gracias."); $("code").focus();
-};
-
-/* Avisos del dueño */
-const AVISOS = [
-  { id: 1, cuando: "Hoy, 07:45", texto: "Hoy la tienda cierra a las 8 p. m.", importante: false },
-  { id: 2, cuando: "Hoy, 07:50", texto: "No recibir billetes de $500 hasta nuevo aviso.", importante: true },
-  { id: 3, cuando: "Ayer, 06:10", texto: "Promoción 2x1 en cervezas vigente hasta el 31 de octubre.", importante: false }
+const AVISOS = [{ id: 1, f: h(8), txt: "Hoy la tienda cierra a las 8 p. m.", imp: false }, { id: 2, f: h(7), txt: "No recibir billetes de $500 hasta nuevo aviso.", imp: true }];
+const REPS = [
+  { id: 1, f: h(4), cajero: "Cobrador", tipo: "Código no encontrado", prod: "7501234567895", cod: null, nota: "", estado: "nuevo" },
+  { id: 2, f: h(3), cajero: "Cobrador", tipo: "Precio incorrecto", prod: "Coca-Cola 600 ml", cod: cd("Coca-Cola"), nota: "El anaquel marca $18 y aquí sale $19", estado: "nuevo" },
+  { id: 3, f: h(30), cajero: "Cobrador", tipo: "Hay producto, pero el sistema dice agotado", prod: "Nescafé Clásico 100 g", cod: cd("Nescafé"), nota: "", estado: "resuelto" }
 ];
-const leidos = new Set(); let avId = null;
-function pintarAvisos(){
-  const nuevos = AVISOS.filter(a => !leidos.has(a.id)), imp = nuevos.filter(a => a.importante).pop();
-  $("bAv").firstChild.textContent = "Avisos" + (nuevos.length ? " (" + nuevos.length + ")" : "");
-  avId = imp ? imp.id : null; $("avDueno").hidden = !imp; if (imp) $("avTxt").textContent = "Aviso del dueño: " + imp.texto;
-}
-$("avOk").onclick = () => { if (avId) leidos.add(avId); pintarAvisos(); $("code").focus(); };
-$("bAv").onclick = () => {
-  $("avList").innerHTML = AVISOS.map(a => `<div class="${a.importante ? "imp" : ""}"><small>${a.cuando}${a.importante ? " · Importante" : ""}</small>${a.texto}</div>`).join("");
-  $("dAv").showModal(); AVISOS.forEach(a => leidos.add(a.id)); pintarAvisos();
+const USERS = [
+  { id: 1, nombre: "Dueño", correo: "dueno@tienda.com", rol: "admin", activo: true },
+  { id: 2, nombre: "Cobrador", correo: "cobrador@tienda.com", rol: "cobrador", activo: true },
+  { id: 3, nombre: "Ana", correo: "ana@tienda.com", rol: "cobrador", activo: false }
+];
+const u = p => p && p.unidad === "kg" ? " kg" : "";
+const mov = (p, t, c, a, d, m) => MOV.unshift({ f: new Date(), cod: p.cod, nom: p.nombre, tipo: t, cant: c, antes: a, desp: d, motivo: m });
+
+const VISTAS = {
+  inicio(){
+    const bajo = P.filter(p => p.activo && p.stock <= p.min), hoy = T.filter(t => t.inicio.toDateString() === new Date().toDateString());
+    const v = hoy.reduce((a, t) => a + t.ef + t.tj + t.tr, 0), tk = hoy.reduce((a, t) => a + t.tk, 0);
+    return `<h1>Buenos días, Dueño</h1><p class="sub">${new Date().toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })} · datos de ejemplo</p>
+    <div class="kpis"><div class="kpi" style="background:var(--c1)"><b>${money(v)}</b>Ventas de hoy<small>${tk} tickets</small></div>
+    <div class="kpi" style="background:var(--c3)"><b>${bajo.length}</b>Por resurtir<small>bajo el stock mínimo</small></div>
+    <div class="kpi" style="background:var(--c2)"><b>${T.filter(t => t.estado === "abierto").length}</b>Turnos abiertos<small>pendientes de corte</small></div>
+    <div class="kpi" style="background:var(--c4)"><b>${P.filter(p => p.activo).length}</b>Productos activos<small>en catálogo</small></div>
+    <div class="kpi" style="background:var(--c5)"><b>${REPS.filter(r => r.estado === "nuevo").length}</b>Reportes nuevos<small>de los cobradores</small></div></div>
+    <h2>Por resurtir</h2>` + (bajo.map(p => `<div class="r" style="grid-template-columns:1fr auto auto"><span><b>${p.nombre}</b><small>${p.cod}</small></span><span class="${p.stock ? "" : "bad"}">${p.stock ? p.stock + u(p) + " (mín. " + p.min + ")" : "Agotado"}</span><span class="ac"><button class="sec" data-aj="${p.cod}">Ajustar</button></span></div>`).join("") || '<div class="card">Todo está por encima del mínimo.</div>');
+  },
+  productos(){
+    return `<h1>Productos</h1><p class="sub">Catálogo, precios y costos. El stock se cambia en Inventario.</p>
+    <div class="bar"><input id="q" placeholder="Buscar por nombre o código de barras" autocomplete="off"><button class="go" id="nuevo">+ Nuevo producto</button></div>
+    <div class="chips" id="chips"></div><div id="plist"></div>`;
+  },
+  inventario(){
+    const p = prodSel ? prod(prodSel) : null;
+    return `<h1>Inventario</h1><p class="sub">Cada cambio de stock queda registrado en el kardex.</p>
+    <div class="grid2"><div class="card"><label class="lbl" for="iprod" style="margin-top:0">Producto</label>
+    <input id="iprod" list="dlp" placeholder="Código de barras o nombre" value="${p ? p.cod : ""}" autocomplete="off"><datalist id="dlp">${P.map(x => `<option value="${x.cod}">${x.nombre}</option>`).join("")}</datalist>
+    ${p ? `<div class="sel"><b>${p.nombre}</b><small style="color:#10292d">Stock actual: <strong>${p.stock}${u(p)}</strong> · mínimo ${p.min}</small></div>` : ""}
+    <div class="seg" id="seg"><button data-t="entrada" aria-pressed="${tipo === "entrada"}">Entrada</button><button data-t="merma" aria-pressed="${tipo === "merma"}">Merma</button><button data-t="conteo" aria-pressed="${tipo === "conteo"}">Conteo</button></div>
+    <label class="lbl" for="cant">${tipo === "entrada" ? "Cantidad que entró" : tipo === "merma" ? "Cantidad que sale" : "Cantidad contada físicamente"}</label>
+    <input id="cant" type="number" min="0" step="${p && p.unidad === "kg" ? "0.001" : "1"}" inputmode="decimal">
+    ${tipo === "merma" ? `<label class="lbl" for="mot">Motivo</label><select id="mot"><option>Caducado</option><option>Dañado</option><option>Robo o extravío</option><option>Consumo interno</option><option>Otro</option></select>` : ""}
+    <label class="lbl" for="nota">${tipo === "entrada" ? "Proveedor (opcional)" : "Nota"}</label><input id="nota" maxlength="80" autocomplete="off">
+    <p class="hint" id="prev"></p><p class="err" id="err"></p><button class="go" id="reg" style="width:100%">Registrar movimiento</button></div>
+    <div class="paper"><div class="tabs"><i></i><i></i><i></i><i></i></div><h2>Kardex${p ? " · " + p.nombre : ""}</h2><div id="kdx"></div></div></div>`;
+  },
+  corte(){
+    return `<h1>Corte de caja</h1><p class="sub">Compara lo que debería haber en caja contra lo que cuentas.</p>` + T.map(t => {
+      const esp = esperado(t), tr = t.ret.reduce((a, r) => a + r.m, 0);
+      return `<div class="paper"><div class="tabs"><i></i><i></i><i></i><i></i></div>
+      <div class="k"><span><b>${t.cajero} · Caja ${t.caja}</b><small>${fh(t.inicio)}${t.fin ? " → " + fh(t.fin) : " · en curso"}</small></span><span class="chipe" style="background:${t.estado === "abierto" ? "var(--c1)" : "var(--c4)"}">${t.estado === "abierto" ? "Abierto" : "Cerrado"}</span></div>
+      <div class="l"><span>Fondo de caja</span><span>${money(t.fondo)}</span></div><div class="l"><span>Ventas en efectivo</span><span>${money(t.ef)}</span></div>
+      <div class="l"><span>Retiros</span><span>−${money(tr)}</span></div>${t.ret.map(r => `<div class="l"><small>${fh(r.h)} · ${r.mot}</small><small>−${money(r.m)}</small></div>`).join("")}
+      <div class="l t"><span>Efectivo esperado</span><span>${money(esp)}</span></div>
+      <div class="l"><span>Tarjeta</span><span>${money(t.tj)}</span></div><div class="l"><span>Transferencia</span><span>${money(t.tr)}</span></div><div class="l"><span>Tickets</span><span>${t.tk}</span></div>
+      ${t.estado === "cerrado" ? `<div class="l"><span>Efectivo contado</span><span>${money(t.contado)}</span></div><div class="l t"><span>Diferencia</span><span class="${t.dif < 0 ? "bad" : t.dif > 0 ? "ok" : ""}">${t.dif === 0 ? "Cuadra" : (t.dif > 0 ? "Sobrante " : "Faltante ") + money(Math.abs(t.dif))}</span></div>${t.nota ? `<small>${t.nota}</small>` : ""}` : `<button class="go" data-c="${t.id}" style="width:100%;margin-top:12px">Hacer corte</button>`}</div>`; }).join("");
+  },
+  promos(){
+    return `<h1>Promociones</h1><p class="sub">Las que estén activas aparecen en la caja; el cobrador decide cuál aplicar.</p><div class="bar"><button class="go" id="nPromo">+ Nueva promoción</button></div>`
+    + (PROMOS.map(p => `<div class="r${p.activa ? "" : " off"}" style="grid-template-columns:64px 1fr auto"><b class="eti">${etq(p)}</b><span><b>${p.nom}</b><small>${regla(p)} · ${p.prods.map(c => (prod(c) || { nombre: c }).nombre).join(" / ")}</small><small>${p.vig || "Sin fecha"}${p.dias.length ? " · " + p.dias.map(d => DIAS[d]).join(", ") : ""}${p.activa ? "" : " · En pausa"}</small></span><span class="ac"><button data-pe="${p.id}">Editar</button><button data-pa="${p.id}">${p.activa ? "Pausar" : "Activar"}</button><button class="del" data-pd="${p.id}">Eliminar</button></span></div>`).join("") || '<div class="card">Aún no hay promociones.</div>');
+  },
+  avisos(){
+    return `<h1>Avisos</h1><p class="sub">Mensajes para tus cobradores. Los importantes salen destacados al abrir la caja.</p>
+    <div class="card"><label class="lbl" for="avT" style="margin-top:0">Nuevo aviso</label><input id="avT" maxlength="140" autocomplete="off" placeholder="Ej.: Hoy llega el camión de refrescos a las 10">
+    <label class="lbl" style="display:flex;gap:8px;align-items:center;font-weight:400"><input id="avI" type="checkbox" style="width:auto;padding:0"> Marcar como importante</label><p class="err" id="avE"></p><button class="go" id="avP">Publicar aviso</button></div>`
+    + (AVISOS.map(a => `<div class="r" style="grid-template-columns:1fr auto"><span><b>${a.txt}</b><small>${fh(a.f)}${a.imp ? " · Importante" : ""}</small></span><span class="ac"><button class="del" data-ad="${a.id}">Eliminar</button></span></div>`).join("") || '<div class="card">No hay avisos publicados.</div>');
+  },
+  reportes(){
+    const nuevos = REPS.filter(r => r.estado === "nuevo").length;
+    return `<h1>Reportes de los cobradores</h1><p class="sub">${nuevos ? nuevos + " sin revisar" : "Todo revisado"}</p>` + (REPS.map(r => {
+      const p = r.cod && prod(r.cod);
+      const acc = r.tipo === "Código no encontrado" ? `<button data-rn="${r.id}">Crear producto</button>` : r.tipo === "Precio incorrecto" && p ? `<button data-e="${p.cod}">Editar precio</button>` : r.tipo.startsWith("Hay producto") && p ? `<button data-aj="${p.cod}">Ajustar stock</button>` : "";
+      return `<div class="r${r.estado === "resuelto" ? " off" : ""}" style="grid-template-columns:1fr auto"><span><b>${r.tipo}</b><small>${r.prod}${r.nota ? " · " + r.nota : ""}</small><small>${r.cajero} · ${fh(r.f)} · ${r.estado === "nuevo" ? "Nuevo" : "Resuelto"}</small></span><span class="ac">${acc}${r.estado === "nuevo" ? `<button data-rr="${r.id}">Marcar resuelto</button>` : ""}</span></div>`; }).join("") || '<div class="card">Sin reportes.</div>');
+  },
+  usuarios(){
+    return `<h1>Usuarios</h1><p class="sub">Quién puede entrar al sistema y con qué rol.</p><div class="bar"><button class="go" id="nUser">+ Nuevo usuario</button></div>`
+    + USERS.map(us => `<div class="r${us.activo ? "" : " off"}" style="grid-template-columns:1fr auto auto"><span><b>${us.nombre}</b><small>${us.correo}${us.activo ? "" : " · Desactivado"}</small></span><span class="chipe" style="background:${us.rol === "admin" ? "var(--c3)" : "var(--c4)"}">${us.rol === "admin" ? "Dueño" : "Cobrador"}</span><span class="ac">${us.id === 1 ? "<small>Tú</small>" : `<button data-ua="${us.id}">${us.activo ? "Desactivar" : "Activar"}</button>`}</span></div>`).join("")
+    + '<p class="hint">Un usuario desactivado ya no puede iniciar sesión, pero conserva su historial de ventas.</p>';
+  }
 };
-$("avCerrar").onclick = () => { $("dAv").close(); $("code").focus(); };
 
-// --- PROTECCIÓN DE SESIÓN FIREBASE E INICIALIZACIÓN ---
-requerirSesion("cobrador", (usuario) => {
-  console.log("Sesión de Cobrador iniciada:", usuario.email);
-  
-  // Actualiza el correo en la interfaz con el real de Firebase
-  const emailSpan = document.querySelector(".who span:nth-child(2)");
-  if(emailSpan) emailSpan.textContent = usuario.email;
+/* ---------- Render ---------- */
+function render(){
+  document.querySelectorAll("#nav [data-s]").forEach(b => b.toggleAttribute("aria-current", b.dataset.s === sec) || b.removeAttribute("aria-current"));
+  document.querySelectorAll("#nav [data-s]").forEach(b => { if (b.dataset.s === sec) b.setAttribute("aria-current", "page"); });
+  $("nRep").textContent = REPS.filter(r => r.estado === "nuevo").length || "";
+  $("main").innerHTML = VISTAS[sec]();
+  if (sec === "productos"){ chips(); listar(); }
+  if (sec === "inventario"){ kardex(); vista(); }
+}
+function chips(){ $("chips").innerHTML = ["Todos", ...deps()].map(d => `<button class="chip" data-d="${d}" aria-pressed="${d === dep}">${d}</button>`).join(""); }
+function listar(){
+  const t = ($("q").value || "").trim().toLowerCase();
+  const r = P.filter(p => (dep === "Todos" || p.depto === dep) && (!t || p.nombre.toLowerCase().includes(t) || p.cod.startsWith(t)));
+  $("plist").innerHTML = r.map(p => { const base = p.precio / (1 + p.iva), mg = Math.round((base - p.costo) / base * 100);
+    return `<div class="r${p.activo ? "" : " off"}"><span><b>${p.nombre}</b><small>${p.cod} · ${p.depto} · ${p.unidad === "kg" ? "por kilo" : "por pieza"}${p.iva ? "" : " · IVA 0%"}${p.activo ? "" : " · De baja"}</small></span>
+    <span class="pr">${money(p.precio)}</span><span class="hm">${money(p.costo)}<small>margen ${mg}%</small></span>
+    <span class="${p.stock <= p.min ? "bad" : ""}">${p.stock}${u(p)}<small>mín. ${p.min}</small></span>
+    <span class="ac"><button data-e="${p.cod}">Editar</button><button data-b="${p.cod}">${p.activo ? "Dar de baja" : "Reactivar"}</button><button class="del" data-x="${p.cod}">Eliminar</button></span></div>`; }).join("") || '<div class="card">Sin resultados.</div>';
+}
+function kardex(){
+  const r = MOV.filter(m => !prodSel || m.cod === prodSel).slice(0, 20);
+  $("kdx").innerHTML = r.map(m => `<div class="k"><span>${m.nom}<small>${fh(m.f)} · ${m.tipo} · ${m.motivo}</small></span><span class="${m.cant > 0 ? "ok" : "bad"}">${m.cant > 0 ? "+" : ""}${m.cant}<small>${m.antes} → ${m.desp}</small></span></div>`).join("") || "Sin movimientos.";
+}
 
-  // Solo dibuja la interfaz y abre el turno si la sesión es válida
-  render();
-  abrirApertura();
+/* ---------- Inventario ---------- */
+function vista(){
+  const p = prodSel ? prod(prodSel) : null, c = parseFloat(($("cant") || {}).value);
+  if (!p || isNaN(c)) return ($("prev").textContent = "");
+  const n = tipo === "entrada" ? p.stock + c : tipo === "merma" ? p.stock - c : c;
+  $("prev").textContent = "El stock quedará en " + r3(n) + u(p) + ".";
+}
+function registrar(){
+  const p = prodSel ? prod(prodSel) : null, c = parseFloat($("cant").value), nota = $("nota").value.trim(), err = m => ($("err").textContent = m);
+  if (!p) return err("Elige un producto.");
+  if (isNaN(c) || c < 0 || (tipo !== "conteo" && c === 0)) return err("Escribe una cantidad válida.");
+  if (p.unidad !== "kg" && !Number.isInteger(c)) return err("Este producto se cuenta por pieza: usa un número entero.");
+  let nuevo, t, m;
+  if (tipo === "entrada"){ nuevo = r3(p.stock + c); t = "Entrada por compra"; m = nota ? "Proveedor: " + nota : "Compra"; }
+  else if (tipo === "merma"){
+    const mo = $("mot").value; if (c > p.stock) return err("No puedes sacar más de lo que hay (" + p.stock + ").");
+    if (mo === "Otro" && nota.length < 5) return err("Explica el motivo en la nota (mínimo 5 letras).");
+    nuevo = r3(p.stock - c); t = "Merma"; m = mo === "Otro" ? "Otro: " + nota : mo + (nota ? " · " + nota : "");
+  } else {
+    if (c === p.stock) return err("El conteo coincide con el sistema: no hace falta ajustar.");
+    nuevo = c; t = "Conteo físico"; m = "Conteo: había " + p.stock + ", se contó " + c + (nota ? " · " + nota : "");
+  }
+  const antes = p.stock; p.stock = nuevo; mov(p, t, r3(nuevo - antes), antes, nuevo, m);
+  render(); $("prev").textContent = "Movimiento registrado. Stock actual: " + nuevo + u(p) + "."; $("prev").style.color = "var(--ok)";
+}
+/* ---------- Productos: alta, edición y baja ---------- */
+function abrirProd(cod){
+  const p = cod ? prod(cod) : null; edit = p ? p.cod : null;
+  $("dpT").textContent = p ? "Editar producto" : "Nuevo producto";
+  $("pCod").value = p ? p.cod : ""; $("pCod").disabled = !!p; $("pSig").hidden = !!p;
+  $("pNom").value = p ? p.nombre : ""; $("pDep").value = p ? p.depto : ""; $("pUni").value = p ? p.unidad : "pza";
+  $("pPre").value = p ? p.precio : ""; $("pCos").value = p ? p.costo : ""; $("pIva").value = p ? String(p.iva) : "0.16";
+  $("pMin").value = p ? p.min : 5; $("pStk").value = p ? p.stock : 0; $("pStk").disabled = !!p;
+  $("pDl").innerHTML = deps().map(d => `<option value="${d}">`).join(""); $("pErr").textContent = "";
+  $("dProd").showModal(); (p ? $("pNom") : $("pCod")).focus();
+}
+$("pSig").onclick = () => { let n = 1; while (P.some(p => p.cod === String(n))) n++; $("pCod").value = n; $("pNom").focus(); };
+$("pNo").onclick = () => $("dProd").close();
+$("pOk").onclick = () => {
+  const cod = $("pCod").value.trim(), nombre = $("pNom").value.trim(), depto = $("pDep").value.trim(), unidad = $("pUni").value;
+  const precio = parseFloat($("pPre").value), costo = parseFloat($("pCos").value), iva = parseFloat($("pIva").value), min = parseFloat($("pMin").value) \vert{}\vert{} 0, stock = parseFloat($("pStk").value) || 0;
+  const e = m => ($("pErr").textContent = m);
+  if (!/^\d+$/.test(cod)) return e("El código de barras solo lleva números.");
+  if (!edit && prod(cod)) return e("Ese código ya existe: " + prod(cod).nombre + ".");
+  if (nombre.length < 3) return e("Escribe el nombre del producto.");
+  if (!depto) return e("Elige o escribe un departamento.");
+  if (!(precio > 0)) return e("El precio debe ser mayor a cero.");
+  if (isNaN(costo) || costo < 0) return e("Escribe el costo (puede ser 0).");
+  if (!edit && unidad === "pza" && !Number.isInteger(stock)) return e("Las existencias por pieza deben ser un número entero.");
+  if (edit) Object.assign(prod(edit), { nombre, depto, unidad, precio, costo, iva, min });
+  else { const p = { cod, nombre, depto, unidad, precio, costo, iva, min, stock, activo: true }; P.push(p); if (stock > 0) mov(p, "Inventario inicial", stock, 0, stock, "Alta del producto"); }
+  $("dProd").close(); render();
+};
+
+/* ---------- Corte de caja ---------- */
+function abrirCorte(id){
+  cor = T.find(t => t.id === id); const tr = cor.ret.reduce((a, r) => a + r.m, 0);
+  $("cInfo").innerHTML = `<small>${cor.cajero} · Caja ${cor.caja} · desde ${fh(cor.inicio)}</small><div class="l"><span>Fondo + ventas en efectivo</span><span>${money(cor.fondo + cor.ef)}</span></div><div class="l"><span>Retiros</span><span>−${money(tr)}</span></div><div class="l t"><span>Efectivo esperado</span><span>${money(esperado(cor))}</span></div>`;
+  $("cCont").value = ""; $("cNota").value = ""; $("cDif").textContent = ""; $("cErr").textContent = ""; $("dCorte").showModal(); $("cCont").focus();
+}
+function difCorte(){
+  const v = parseFloat($("cCont").value); if (isNaN(v)) return ($("cDif").textContent = "");
+  const d = r2(v - esperado(cor)); $("cDif").textContent = d === 0 ? "Cuadra exacto." : (d > 0 ? "Sobrante " : "Faltante ") + money(Math.abs(d)); $("cDif").style.color = d === 0 ? "var(--ok)" : "var(--bad)";
+}
+$("cCont").oninput = difCorte; $("cNo").onclick = () => $("dCorte").close();
+$("cOk").onclick = () => {
+  const v = parseFloat($("cCont").value), nota = $("cNota").value.trim();
+  if (isNaN(v) || v < 0) return ($("cErr").textContent = "Escribe el efectivo que contaste.");
+  const d = r2(v - esperado(cor)); if (d !== 0 && nota.length < 5) return ($("cErr").textContent = "Hay diferencia: explica qué pasó en la nota.");
+  Object.assign(cor, { estado: "cerrado", fin: new Date(), contado: v, dif: d, nota }); $("dCorte").close(); render();
+};
+
+/* ---------- Confirmar eliminación ---------- */
+function confirmar(titulo, texto, fn){ elim = fn; $("elT").textContent = titulo; $("elP").innerHTML = texto; $("dEl").showModal(); }
+$("elNo").onclick = () => $("dEl").close();
+$("elSi").onclick = () => { $("dEl").close(); if (elim) elim(); elim = null; };
+function eliminarProd(cod){
+  const p = prod(cod);
+  confirmar("¿Seguro que quieres eliminar este producto?", `<b>${p.nombre}</b><br>${p.stock > 0 ? `<span class="bad">Todavía tiene ${p.stock}${u(p)} en existencia; ese inventario se perderá.</span><br>` : ""}Esta acción no se puede deshacer. Las ventas anteriores conservan su nombre y precio. Si solo quieres dejar de venderlo, mejor usa «Dar de baja».`,
+    () => { P.splice(P.indexOf(p), 1); PROMOS.forEach(x => x.prods = x.prods.filter(c => c !== cod)); if (prodSel === cod) prodSel = null; render(); });
+}
+
+/* ---------- Promociones ---------- */
+$("prDias").innerHTML = DIAS.map((d, i) => `<label><input type="checkbox" value="${i}">${d.slice(0, 3)}</label>`).join("");
+function tipoPromo(){ const n = $("prTipo").value === "nxm"; $("prNx").hidden = !n; $("prPc").hidden = n; }
+function pintarPT(){ $("prTags").innerHTML = promoProds.map(c => `<span>${(prod(c) || { nombre: c }).nombre}<button type="button" data-pq="${c}" aria-label="Quitar">×</button></span>`).join("") || "<small>Agrega al menos un producto.</small>"; }
+function abrirPromo(id){
+  const p = id ? PROMOS.find(x => x.id === id) : null; promoEd = p ? p.id : null; promoProds = p ? [...p.prods] : [];
+  $("prT").textContent = p ? "Editar promoción" : "Nueva promoción";
+  $("prNom").value = p ? p.nom : ""; $("prTipo").value = p ? p.tipo : "nxm"; $("prN").value = p && p.n ? p.n : 2; $("prM").value = p && p.m ? p.m : 1; $("prPct").value = p && p.pct ? p.pct : 10; $("prVig").value = p ? p.vig : "";
+  document.querySelectorAll("#prDias input").forEach(i => i.checked = p ? p.dias.includes(+i.value) : false);
+  $("prDl").innerHTML = P.map(x => `<option value="${x.cod}">${x.nombre}</option>`).join(""); $("prIn").value = ""; $("prErr").textContent = "";
+  pintarPT(); tipoPromo(); $("dPromo").showModal(); $("prNom").focus();
+}
+$("prTipo").onchange = tipoPromo;
+$("prAdd").onclick = () => {
+  const t = $("prIn").value.trim().toLowerCase(), p = P.find(x => x.cod === t || x.nombre.toLowerCase() === t) || (t ? P.find(x => x.nombre.toLowerCase().includes(t)) : null);
+  if (!p) return ($("prErr").textContent = "No encontré ese producto.");
+  if (!promoProds.includes(p.cod)) promoProds.push(p.cod);
+  $("prIn").value = ""; $("prErr").textContent = ""; pintarPT();
+};
+$("prTags").onclick = e => { const b = e.target.closest("[data-pq]"); if (b){ promoProds = promoProds.filter(c => c !== b.dataset.pq); pintarPT(); } };
+$("prNo").onclick = () => $("dPromo").close();
+$("prOk").onclick = () => {
+  const nom = $("prNom").value.trim(), tp = $("prTipo").value, n = parseInt($("prN").value), m = parseInt($("prM").value), pct = parseFloat($("prPct").value), e = x => ($("prErr").textContent = x);
+  if (nom.length < 3) return e("Ponle un nombre a la promoción.");
+  if (!promoProds.length) return e("Agrega al menos un producto.");
+  if (tp === "nxm" && !(n >= 2 && m >= 1 && m < n)) return e("«Lleva» debe ser mayor que «Paga» (por ejemplo lleva 2, paga 1).");
+  if (tp === "pct" && !(pct > 0 && pct <= 90)) return e("El descuento debe estar entre 1 y 90 %.");
+  const dat = { nom, tipo: tp, n: tp === "nxm" ? n : 0, m: tp === "nxm" ? m : 0, pct: tp === "pct" ? pct : 0, prods: [...promoProds], vig: $("prVig").value.trim(), dias: [...document.querySelectorAll("#prDias input:checked")].map(i => +i.value) };
+  if (promoEd) Object.assign(PROMOS.find(x => x.id === promoEd), dat); else PROMOS.push({ id: Date.now(), activa: true, ...dat });
+  $("dPromo").close(); render();
+};
+
+/* ---------- Avisos ---------- */
+function publicar(){
+  const t = $("avT").value.trim(); if (t.length < 5) return ($("avE").textContent = "Escribe el aviso (mínimo 5 letras).");
+  AVISOS.unshift({ id: Date.now(), f: new Date(), txt: t, imp: $("avI").checked }); render();
+}
+
+/* ---------- Usuarios ---------- */
+$("uNo").onclick = () => $("dUser").close();
+$("uOk").onclick = () => {
+  const nombre = $("uNom").value.trim(), correo = $("uCor").value.trim().toLowerCase(), rol = $("uRol").value, pas = $("uPas").value, e = x => ($("uErr").textContent = x);
+  if (nombre.length < 2) return e("Escribe el nombre.");
+  if (!/^\S+@\S+\.\S+$/.test(correo)) return e("Escribe un correo válido.");
+  if (USERS.some(x => x.correo === correo)) return e("Ya existe un usuario con ese correo.");
+  if (pas.length < 6) return e("La contraseña temporal necesita mínimo 6 caracteres.");
+  USERS.push({ id: Date.now(), nombre, correo, rol, activo: true }); $("dUser").close(); render();
+};
+
+/* ---------- Eventos ---------- */
+document.addEventListener("click", e => {
+  const g = s => e.target.closest(s);
+  if (g("[data-s]")){ sec = g("[data-s]").dataset.s; render(); }
+  else if (g("[data-aj]")){ prodSel = g("[data-aj]").dataset.aj; sec = "inventario"; tipo = "entrada"; render(); }
+  else if (g("#nuevo")) abrirProd();
+  else if (g("[data-e]")) abrirProd(g("[data-e]").dataset.e);
+  else if (g("[data-b]")){ const p = prod(g("[data-b]").dataset.b); p.activo = !p.activo; listar(); }
+  else if (g("[data-d]")){ dep = g("[data-d]").dataset.d; chips(); listar(); }
+  else if (g("[data-t]")){ tipo = g("[data-t]").dataset.t; render(); }
+  else if (g("#reg")) registrar();
+  else if (g("[data-c]")) abrirCorte(+g("[data-c]").dataset.c);
+  else if (g("[data-x]")) eliminarProd(g("[data-x]").dataset.x);
+  else if (g("#nPromo")) abrirPromo();
+  else if (g("[data-pe]")) abrirPromo(+g("[data-pe]").dataset.pe);
+  else if (g("[data-pa]")){ const p = PROMOS.find(x => x.id === +g("[data-pa]").dataset.pa); p.activa = !p.activa; render(); }
+  else if (g("[data-pd]")){ const p = PROMOS.find(x => x.id === +g("[data-pd]").dataset.pd); confirmar("¿Seguro que quieres eliminar esta promoción?", `<b>${p.nom}</b><br>Dejará de aparecer en la caja. Si solo quieres detenerla un tiempo, mejor usa «Pausar».`, () => { PROMOS.splice(PROMOS.indexOf(p), 1); render(); }); }
+  else if (g("#avP")) publicar();
+  else if (g("[data-ad]")){ const a = AVISOS.find(x => x.id === +g("[data-ad]").dataset.ad); confirmar("¿Seguro que quieres eliminar este aviso?", `<b>${a.txt}</b>`, () => { AVISOS.splice(AVISOS.indexOf(a), 1); render(); }); }
+  else if (g("[data-rr]")){ REPS.find(r => r.id === +g("[data-rr]").dataset.rr).estado = "resuelto"; render(); }
+  else if (g("[data-rn]")){ const r = REPS.find(x => x.id === +g("[data-rn]").dataset.rn); abrirProd(); $("pCod").value = r.prod; }
+  else if (g("#nUser")){ ["uNom", "uCor", "uPas", "uErr"].forEach(i => { $(i).value = ""; $(i).textContent = ""; }); $("uRol").value = "cobrador"; $("dUser").showModal(); $("uNom").focus(); }
+  else if (g("[data-ua]")){ const x = USERS.find(y => y.id === +g("[data-ua]").dataset.ua); x.activo = !x.activo; render(); }
 });
-
-// Botón de salir con Firebase
-$("salir").onclick = cerrarSesion;
+document.addEventListener("input", e => { if (e.target.id === "q") listar(); if (e.target.id === "cant") vista(); });
+document.addEventListener("change", e => {
+  if (e.target.id !== "iprod") return;
+  const t = e.target.value.trim().toLowerCase(), p = P.find(x => x.cod === t || x.nombre.toLowerCase() === t) || P.filter(x => x.nombre.toLowerCase().includes(t))[0];
+  prodSel = p && t ? p.cod : null; render();
+});
+$("salir").onclick = () => alert("Aquí se cerrará la sesión y volverás al inicio de sesión.");
+render();
