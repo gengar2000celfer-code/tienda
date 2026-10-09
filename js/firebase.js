@@ -29,12 +29,16 @@ export function sesionActual() {
   });
 }
 
-// Protege una pantalla: exige sesión, usuario activo y rol. Si no cumple, cierra sesión y regresa al login.
+// Protege una pantalla: exige sesión y usuario activo. Si el rol no corresponde, lo manda a su propia pantalla.
 export async function requerirRol(...roles) {
   const s = await sesionActual();
-  if (!s || !s.perfil || s.perfil.activo !== true || !roles.includes(s.perfil.rol)) {
+  if (!s || !s.perfil || s.perfil.activo !== true) {
     await signOut(auth);
     location.href = "index.html";
+    return new Promise(() => {});
+  }
+  if (!roles.includes(s.perfil.rol)) {
+    irAInicio(s.perfil.rol);
     return new Promise(() => {});
   }
   return s;
