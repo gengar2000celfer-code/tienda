@@ -1,326 +1,87 @@
-import { db, auth, requerirRol, cerrarSesion } from "./firebase.js";
-import { collection, doc, getDocs, getDoc, setDoc, updateDoc, addDoc, query, orderBy, serverTimestamp, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tienda · Panel del dueño</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">🛒 Tienda <span class="rol">Dueño</span></div>
+  <div class="who"><span id="quien"></span><button id="salir">Cerrar sesión</button></div>
+</header>
+<p class="err" id="gErr" role="alert" style="max-width:1200px;margin:6px auto 0;padding:0 24px"></p>
+<div class="shell">
+  <nav id="nav" aria-label="Secciones">
+    <button data-s="inicio">Inicio</button>
+    <button data-s="productos">Productos</button>
+    <button data-s="inventario">Inventario</button>
+    <button data-s="corte">Corte de caja</button>
+    <button data-s="promos">Promociones</button>
+    <button data-s="avisos">Avisos</button>
+    <button data-s="reportes">Reportes <em id="nRep"></em></button>
+    <button data-s="usuarios">Usuarios</button>
+  </nav>
+  <main id="main"></main>
+</div>
 
-// --- UTILIDADES ---
-const $ = id => document.getElementById(id);
-const money = n => "$" + parseFloat(n).toFixed(2);
-// Formatear fechas de Firestore
-const dateStr = d => d?.toDate ? d.toDate().toLocaleString('es-MX', { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+<dialog id="dProd">
+  <h3 id="dpT">Nuevo producto</h3>
+  <small>El código de barras es el identificador. Para productos sueltos usa 1, 2, 3…</small>
+  <label class="lbl" for="pCod">Código de barras</label>
+  <div class="row2"><input id="pCod" inputmode="numeric" placeholder="Escanéalo o escríbelo" autocomplete="off"><button class="sec" id="pSig" type="button">Código suelto</button></div>
+  <label class="lbl" for="pNom">Nombre</label><input id="pNom" maxlength="60" autocomplete="off" placeholder="Marca, producto y presentación">
+  <div class="f2"><div><label class="lbl" for="pDep">Departamento</label><input id="pDep" list="pDl" autocomplete="off"><datalist id="pDl"></datalist></div>
+  <div><label class="lbl" for="pUni">Se vende por</label><select id="pUni"><option value="pza">Pieza</option><option value="kg">Kilo</option></select></div></div>
+  <div class="f2"><div><label class="lbl" for="pPre">Precio al público</label><input id="pPre" type="number" min="0" step="0.01" inputmode="decimal"></div>
+  <div><label class="lbl" for="pCos">Costo</label><input id="pCos" type="number" min="0" step="0.01" inputmode="decimal"></div></div>
+  <div class="f2"><div><label class="lbl" for="pIva">IVA</label><select id="pIva"><option value="0.16">16 %</option><option value="0">0 %</option></select></div>
+  <div><label class="lbl" for="pMin">Stock mínimo</label><input id="pMin" type="number" min="0" step="1" inputmode="numeric"></div></div>
+  <label class="lbl" for="pStk">Existencias iniciales</label><input id="pStk" type="number" min="0" step="any" inputmode="decimal">
+  <p class="err" id="pErr"></p>
+  <div class="acts"><button class="sec" id="pNo" type="button">Cancelar</button><button class="go" id="pOk" type="button">Guardar</button></div>
+</dialog>
 
-let sesionGlobal = null;
+<dialog id="dCorte">
+  <h3>Corte de caja</h3>
+  <div id="cInfo"></div>
+  <label class="lbl" for="cCont">Efectivo contado en caja</label>
+  <input id="cCont" type="number" min="0" step="0.01" inputmode="decimal">
+  <p class="hint" id="cDif"></p>
+  <label class="lbl" for="cNota">Nota <span style="font-weight:400">(obligatoria si hay diferencia)</span></label>
+  <input id="cNota" maxlength="100" autocomplete="off">
+  <p class="err" id="cErr"></p>
+  <div class="acts"><button class="sec" id="cNo" type="button">Cancelar</button><button class="go" id="cOk" type="button">Cerrar turno</button></div>
+</dialog>
 
-// --- PROTECCIÓN DE SESIÓN Y ARRANQUE ---
-// Exige que el usuario activo tenga el rol de "admin"
-requerirRol("admin").then(s => {
-  if (!s) return;
-  sesionGlobal = s;
-  console.log("Sesión de Admin iniciada:", s.perfil.nombre);
-  
-  // Actualiza nombre y correo en la barra superior
-  document.querySelector(".who span:nth-child(2)").textContent = s.user.email;
-  document.querySelector(".who .rol").textContent = s.perfil.nombre;
-  
-  initDash();
-});
+<dialog id="dEl"><h3 id="elT"></h3><p id="elP" style="margin:6px 0 4px"></p><div class="acts"><button class="sec" id="elNo" type="button">Cancelar</button><button class="go" id="elSi" type="button" style="background:var(--bad)">Sí, eliminar</button></div></dialog>
 
-// Botón de salir
-$("salir").onclick = cerrarSesion;
+<dialog id="dPromo">
+  <h3 id="prT">Nueva promoción</h3>
+  <label class="lbl" for="prNom">Nombre</label><input id="prNom" maxlength="60" autocomplete="off" placeholder="Ej.: 2x1 en cervezas">
+  <label class="lbl" for="prTipo">Tipo</label><select id="prTipo"><option value="nxm">Lleva N y paga M (2x1, 3x2…)</option><option value="pct">Porcentaje de descuento</option></select>
+  <div id="prNx" class="f2"><div><label class="lbl" for="prN">Lleva</label><input id="prN" type="number" min="2" step="1"></div><div><label class="lbl" for="prM">Paga</label><input id="prM" type="number" min="1" step="1"></div></div>
+  <div id="prPc" hidden><label class="lbl" for="prPct">Descuento (%)</label><input id="prPct" type="number" min="1" max="90" step="1"></div>
+  <label class="lbl" for="prIn">Productos incluidos</label>
+  <div class="row2"><input id="prIn" list="prDl" placeholder="Código o nombre" autocomplete="off"><datalist id="prDl"></datalist><button class="sec" id="prAdd" type="button">Agregar</button></div>
+  <div class="tg" id="prTags"></div>
+  <label class="lbl" for="prVig">Vigencia (texto que verá el cobrador)</label><input id="prVig" maxlength="50" autocomplete="off" placeholder="Ej.: Del 1 al 31 de octubre">
+  <label class="lbl">Días de la semana <span style="font-weight:400">(sin marcar = todos)</span></label><div class="dias" id="prDias"></div>
+  <p class="err" id="prErr"></p>
+  <div class="acts"><button class="sec" id="prNo" type="button">Cancelar</button><button class="go" id="prOk" type="button">Guardar</button></div>
+</dialog>
 
-// --- DASHBOARD ---
-function initDash() {
-  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  $("fechaActual").textContent = new Date().toLocaleDateString('es-MX', options);
-  
-  // Para el resumen, se pueden hacer consultas reales después. Por ahora calcularemos reportes y resurtir:
-  updateBadges();
-}
-
-async function updateBadges() {
-  // Contar productos por resurtir
-  const snapProd = await getDocs(collection(db, "productos"));
-  let resurtirCount = 0;
-  snapProd.forEach(d => {
-    const p = d.data();
-    if (p.activo && p.stock <= (p.stockMinimo || 5)) resurtirCount++;
-  });
-  $("badgeResurtir").textContent = resurtirCount > 0 ? resurtirCount : "";
-  
-  // Contar reportes sin resolver
-  const snapRep = await getDocs(collection(db, "reportes"));
-  let repCount = 0;
-  snapRep.forEach(d => { if (!d.data().resuelto) repCount++; });
-  $("badgeAv").textContent = repCount;
-  $("badgeAv").hidden = repCount === 0;
-}
-
-// --- NAVEGACIÓN ---
-$("goPOS").onclick = () => window.location.href = "ventas.html"; // Ajustado al nombre real de tu caja
-$("goCorte").onclick = () => alert("Abriendo asistente de Corte General... (Próximo módulo)");
-$("goRep").onclick = () => alert("Abriendo Gráficas y Reportes... (Próximo módulo)");
-
-// Manejo de Pestañas genérico
-document.querySelectorAll('.d-tabs button').forEach(btn => {
-  btn.onclick = (e) => {
-    const parent = e.target.closest('.d-head').parentElement;
-    parent.querySelectorAll('.d-tabs button').forEach(b => b.classList.remove('active'));
-    parent.querySelectorAll('.tab-content').forEach(c => c.hidden = true);
-    e.target.classList.add('active');
-    parent.querySelector(`#tab-${e.target.dataset.tab}`).hidden = false;
-    
-    // Disparar lectura de BD según la pestaña
-    if(e.target.dataset.tab === 'resurtir') renderProductos(true);
-    if(e.target.dataset.tab === 'cat') renderProductos(false);
-    if(e.target.dataset.tab === 'kardex') renderKardex();
-    if(e.target.dataset.tab === 'enviar') renderAvisos();
-    if(e.target.dataset.tab === 'recibidos') renderReportesCaja();
-  }
-});
-
-// --- MÓDULO PRODUCTOS Y KARDEX REAL ---
-$("goProd").onclick = () => { renderProductos(false); $("dProd").showModal(); };
-
-async function renderProductos(soloResurtir = false) {
-  const queryTxt = $("busqProd").value.toLowerCase();
-  $("listaProd").innerHTML = '<tr><td colspan="6" style="text-align:center">Cargando productos...</td></tr>';
-  
-  const snap = await getDocs(collection(db, "productos"));
-  let html = '';
-  
-  snap.forEach(docSnap => {
-    const p = docSnap.data();
-    p.id = docSnap.id;
-    if (!p.activo) return;
-    
-    const min = p.stockMinimo || 5;
-    if (soloResurtir && p.stock > min) return;
-    if (queryTxt && !p.nombre.toLowerCase().includes(queryTxt) && !p.id.includes(queryTxt)) return;
-    
-    const isLow = p.stock <= min;
-    const stockClass = isLow ? 'style="color:var(--bad);font-weight:700"' : '';
-    
-    html += `<tr>
-      <td><small>${p.sku || 'S/N'}</small><br>${p.id}</td>
-      <td>${p.nombre}</td>
-      <td ${stockClass}>${p.stock} ${p.unidad} ${isLow ? '⚠️' : ''}</td>
-      <td>${money(p.precio)}</td>
-      <td>
-        <button class="action-btn" onclick="openAjuste('${p.id}', '${p.nombre}', ${p.stock}, '${p.unidad}')">📦 Ajustar Inv.</button>
-        <button class="action-btn" onclick="openFormProd('${p.id}')">✏️ Editar</button>
-        <button class="action-btn del" onclick="bajaProd('${p.id}')">🗑️ Baja</button>
-      </td>
-    </tr>`;
-  });
-  $("listaProd").innerHTML = html || '<tr><td colspan="6" style="text-align:center;padding:20px">No hay productos.</td></tr>';
-  updateBadges();
-}
-
-$("busqProd").oninput = () => renderProductos(document.querySelector('.d-tabs button[data-tab="resurtir"]').classList.contains('active'));
-
-let editProdId = null;
-$("bNuevoProd").onclick = () => openFormProd(null);
-window.openFormProd = async (id) => {
-  editProdId = id;
-  const f = $("formProd"); f.reset();
-  
-  if(id) {
-    $("fpTitle").textContent = "Cargando...";
-    $("dFormProd").showModal();
-    
-    const pDoc = await getDoc(doc(db, "productos", id));
-    const privDoc = await getDoc(doc(db, "productosPrivado", id));
-    const p = pDoc.data();
-    const priv = privDoc.exists() ? privDoc.data() : {};
-
-    $("fpTitle").textContent = "Editar Producto";
-    $("fpCode").value = id; $("fpCode").disabled = true; // El código no se edita
-    $("fpSku").value = p.sku \vert{}\vert{} ''; $("fpName").value = p.nombre;
-    $("fpDep").value = p.departamento \vert{}\vert{} 'Abarrotes'; $("fpUnit").value = p.unidad || 'pza'; 
-    $("fpPrice").value = p.precio; $("fpIva").value = p.iva; 
-    $("fpStock").value = p.stock; $("fpMin").value = p.stockMinimo || 5;
-    $("fpCost").value = priv.costo \vert{}\vert{} 0; $("fpProv").value = priv.proveedor || '';
-  } else {
-    $("fpTitle").textContent = "Nuevo Producto";
-    $("fpCode").disabled = false;
-    $("fpStock").value = 0;
-    $("dFormProd").showModal();
-  }
-}
-
-$("formProd").onsubmit = async e => {
-  e.preventDefault();
-  const id = $("fpCode").value.trim();
-  const batch = writeBatch(db);
-
-  const prodData = {
-    nombre: $("fpName").value, sku: $("fpSku").value, departamento: $("fpDep").value,
-    unidad: $("fpUnit").value, precio: parseFloat($("fpPrice").value),
-    iva: parseFloat($("fpIva").value), stockMinimo: parseFloat($("fpMin").value),
-    activo: true, actualizado: serverTimestamp()
-  };
-
-  if(!editProdId) {
-    prodData.stock = 0;
-    prodData.creado = serverTimestamp();
-  }
-
-  // Guardamos datos públicos y privados separados
-  batch.set(doc(db, "productos", id), prodData, { merge: true });
-  batch.set(doc(db, "productosPrivado", id), {
-    costo: parseFloat($("fpCost").value), proveedor: $("fpProv").value
-  }, { merge: true });
-
-  $("dFormProd").close();
-  await batch.commit();
-  renderProductos();
-};
-
-window.bajaProd = async (id) => {
-  if(!confirm("¿Dar de baja este producto? Ya no saldrá en la caja, pero sus ventas pasadas se mantienen.")) return;
-  await updateDoc(doc(db, "productos", id), { activo: false });
-  renderProductos();
-}
-
-// --- AJUSTES Y KARDEX ---
-let ajProdId = null; let ajStockAnt = 0;
-window.openAjuste = (id, nombre, stock, unidad) => {
-  ajProdId = id; ajStockAnt = stock;
-  $("ajName").textContent = `${nombre} (Stock actual: ${stock} ${unidad})`;
-  $("formAjuste").reset();
-  $("dAjuste").showModal();
-}
-
-$("formAjuste").onsubmit = async e => {
-  e.preventDefault();
-  let qty = parseFloat($("ajCant").value);
-  const tipo = $("ajTipo").value;
-  const motivo = $("ajMotivo").value;
-  
-  if(tipo === 'merma') qty = -Math.abs(qty); 
-  if(tipo === 'conteo') qty = qty - ajStockAnt; 
-  
-  const batch = writeBatch(db);
-  
-  // 1. Afectar el stock del producto
-  batch.update(doc(db, "productos", ajProdId), { 
-    stock: increment(qty), actualizado: serverTimestamp() 
-  });
-  
-  // 2. Registrar el movimiento inborrable en el Kardex
-  const movRef = doc(collection(db, "movimientos"));
-  batch.set(movRef, {
-    fecha: serverTimestamp(), prodId: ajProdId,
-    tipo: tipo.toUpperCase(), cant: qty, antes: ajStockAnt, despues: ajStockAnt + qty,
-    motivo: motivo, usuarioId: sesionGlobal.user.uid, usuarioNombre: sesionGlobal.perfil.nombre
-  });
-  
-  $("dAjuste").close();
-  await batch.commit();
-  renderProductos(document.querySelector('.d-tabs button[data-tab="resurtir"]').classList.contains('active'));
-  if(document.querySelector('.d-tabs button[data-tab="kardex"]').classList.contains('active')) renderKardex();
-};
-
-async function renderKardex() {
-  $("listaKardex").innerHTML = '<tr><td colspan="6" style="text-align:center">Cargando kardex...</td></tr>';
-  const snap = await getDocs(query(collection(db, "movimientos"), orderBy("fecha", "desc")));
-  let html = '';
-  snap.forEach(docSnap => {
-    const m = docSnap.data();
-    const cColor = m.cant > 0 ? 'var(--ok)' : m.cant < 0 ? 'var(--bad)' : 'var(--mute)';
-    html += `<tr>
-      <td><small>${dateStr(m.fecha)}</small></td>
-      <td><small>${m.prodId}</small></td>
-      <td><b>${m.tipo}</b></td>
-      <td style="color:${cColor}">${m.cant > 0 ? '+'+m.cant : m.cant}</td>
-      <td>${m.despues}</td>
-      <td><small>${m.motivo}<br><i>Por: ${m.usuarioNombre}</i></small></td>
-    </tr>`;
-  });
-  $("listaKardex").innerHTML = html || '<tr><td colspan="6">No hay movimientos registrados.</td></tr>';
-}
-
-// --- MÓDULO USUARIOS REAL ---
-$("goUsers").onclick = () => { renderUsers(); $("dUsers").showModal(); };
-
-async function renderUsers() {
-  $("listaUsers").innerHTML = '<tr><td colspan="5" style="text-align:center">Cargando...</td></tr>';
-  const snap = await getDocs(collection(db, "usuarios"));
-  let html = '';
-  snap.forEach(docSnap => {
-    const u = docSnap.data();
-    html += `<tr>
-      <td>${u.nombre}</td><td>${u.correo}</td>
-      <td><span class="rol ${u.rol === 'admin'?'admin':''}">${u.rol}</span></td>
-      <td>${u.activo ? '✅ Activo' : '❌ Inactivo'}</td>
-      <td><button class="action-btn" onclick="openFormUser('${docSnap.id}', '${u.nombre}', '${u.correo}', '${u.rol}', ${u.activo})">✏️ Editar</button></td>
-    </tr>`;
-  });
-  $("listaUsers").innerHTML = html;
-}
-
-window.openFormUser = (id, nombre, correo, rol, activo) => {
-  $("formUser").reset();
-  $("fuTitle").textContent = "Editar Usuario";
-  $("formUser").dataset.uid = id;
-  $("fuName").value = nombre; $("fuEmail").value = correo;
-  $("fuEmail").disabled = true; // El correo se rige por Authentication, mejor no editarlo aquí
-  $("fuRol").value = rol; $("fuActivo").checked = activo;
-  $("dFormUser").showModal();
-}
-
-$("bNuevoUser").onclick = () => alert("Para seguridad, los usuarios nuevos deben registrarse en la consola de Firebase Authentication primero, y luego asignarles su documento en Firestore.");
-
-$("formUser").onsubmit = async e => {
-  e.preventDefault();
-  const id = $("formUser").dataset.uid;
-  await updateDoc(doc(db, "usuarios", id), {
-    nombre: $("fuName").value, rol: $("fuRol").value, activo: $("fuActivo").checked
-  });
-  $("dFormUser").close(); 
-  renderUsers();
-};
-
-// --- AVISOS Y REPORTES ---
-$("goAv").onclick = () => { renderAvisos(); renderReportesCaja(); $("dAvList").showModal(); };
-
-$("formAviso").onsubmit = async e => {
-  e.preventDefault();
-  await addDoc(collection(db, "avisos"), {
-    texto: $("avTxt").value, importante: $("avImp").checked, creado: serverTimestamp()
-  });
-  $("formAviso").reset(); renderAvisos();
-  alert("Aviso transmitido a las cajas.");
-};
-
-async function renderAvisos() {
-  const snap = await getDocs(query(collection(db, "avisos"), orderBy("creado", "desc")));
-  let html = '';
-  snap.forEach(docSnap => {
-    const a = docSnap.data();
-    html += `<div class="${a.importante ? 'imp' : ''}"><small>${dateStr(a.creado)} ${a.importante ? '· URGENTE' : ''}</small>${a.texto}</div>`;
-  });
-  $("listaAvisos").innerHTML = html || '<p style="padding:10px;color:var(--mute)">No hay avisos.</p>';
-}
-
-async function renderReportesCaja() {
-  const snap = await getDocs(collection(db, "reportes"));
-  let html = ''; let count = 0;
-  snap.forEach(docSnap => {
-    const r = docSnap.data();
-    if(r.resuelto) return;
-    count++;
-    html += `<div>
-      <small>${dateStr(r.creado)} · De: ${r.cobradorNombre || 'Cajero'}</small>
-      <b>⚠️ ${r.tipo}</b>: ${r.prod}
-      <p style="margin-top:4px">${r.nota}</p>
-      <button class="action-btn" style="margin-top:8px" onclick="resolverReporte('${docSnap.id}')">✅ Marcar resuelto</button>
-    </div>`;
-  });
-  $("listaReportesCaja").innerHTML = html || '<p style="padding:10px;color:var(--ok)">Todo en orden, sin reportes.</p>';
-  $("badgeAv").textContent = count; $("badgeAv").hidden = count === 0;
-}
-
-window.resolverReporte = async (id) => {
-  await updateDoc(doc(db, "reportes", id), { resuelto: true, fechaResuelto: serverTimestamp() });
-  renderReportesCaja();
-  }
-  
+<dialog id="dUser">
+  <h3>Nuevo usuario</h3>
+  <label class="lbl" for="uNom">Nombre</label><input id="uNom" maxlength="40" autocomplete="off">
+  <label class="lbl" for="uCor">Correo</label><input id="uCor" type="email" autocomplete="off">
+  <label class="lbl" for="uRol">Rol</label><select id="uRol"><option value="cobrador">Cobrador</option><option value="admin">Dueño (administrador)</option></select>
+  <label class="lbl" for="uPas">Contraseña temporal</label><input id="uPas" autocomplete="off" placeholder="Mínimo 6 caracteres">
+  <p class="err" id="uErr"></p>
+  <div class="acts"><button class="sec" id="uNo" type="button">Cancelar</button><button class="go" id="uOk" type="button">Crear usuario</button></div>
+</dialog>
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>
